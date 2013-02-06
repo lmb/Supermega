@@ -1,0 +1,24 @@
+{
+    "response": {
+        "schema": {
+            "type": [
+                {
+                    "properties": {
+                        "w": {"type": "string", "required": true}
+                    }
+                },{
+                    "properties": {
+                        "a": {"type": "string", "required": true},
+                        "sn": {"type": "string", "required": true}
+                    }
+                }
+            ]
+        },
+
+        "mapping": {
+            "opcode": "a",
+            "maxaction": "sn",
+            "wait_url": "w"
+        }
+    }
+}

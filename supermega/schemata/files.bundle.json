@@ -1,0 +1,28 @@
+{
+"request": {
+    "schema": {
+        "type": "object",
+        "properties": {
+            "a": {"type": "string", "pattern": "f", "required": true},
+            "c": {"type": "integer", "required": true}
+        }
+    },
+
+    "mapping": {
+        "c": "c"
+    }
+},
+"response": {
+    "schema": {
+        "type": "object",
+        "properties": {
+            "f": {"type": "array", "required": true, "items": {"type": "object"}},
+            "sn": {"type": "string", "required": true}
+        }
+    },
+
+    "mapping": {
+        "files": "f",
+        "maxaction": "sn"
+    }
+}}

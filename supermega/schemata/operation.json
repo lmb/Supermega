@@ -1,0 +1,42 @@
+{
+    "type": "object",
+    "properties": {
+        "response": {
+            "type": "object",
+            "required": true,
+            "properties": {
+                "schema": {
+                    "type": "object",
+                    "required": true
+                },
+                "mapping": {
+                    "type": "object",
+                    "required": true
+                }
+            }
+        },
+        "request": {
+            "extends": { "$ref": "#properties/response" },
+            "properties": {
+                "schema": {
+                    "properties": {
+                        "properties": {
+                            "type": "object",
+                            "required": true,
+                            "properties": {
+                                "a": {
+                                    "type": "object",
+                                    "required": true,
+                                    "properties": {
+                                        "type": { "required": true, "pattern": "string" },
+                                        "pattern": { "required": true, "type": "string" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
