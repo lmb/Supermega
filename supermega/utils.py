@@ -139,7 +139,7 @@ def retry(ExceptionToCheck, tries=3, delay=5, backoff=2, logger=None):
                         logger.warning(msg)
                     else:
                         print msg
-                    gevent.sleep(mdelay)
+                    time.sleep(mdelay)
                     mtries -= 1
                     mdelay *= backoff
             return f(*args, **kwargs)
