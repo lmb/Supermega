@@ -11,7 +11,8 @@ setup(
     description='The overengineered way to access the MEGA.co.nz service from Python.',
     long_description=open('README.md').read(),
     install_requires=[
-        "requests",
-        "pycrypto"
+        "requests >= 1.1.0",
+        "pycrypto >= 2.6",
+        "jsonschema >= 0.8.0"
     ],
 )
