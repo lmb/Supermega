@@ -87,13 +87,18 @@ class Session(object):
         req = requests.get(res['url'], stream=True)
         func(file, file.decrypt_from_stream(req.raw), *args, **kwargs)
 
-    def download_to_file(self, file, handle):
+    def download_to_file(self, file, handle = None):
         self.download(self._to_file, file, handle)
 
     @staticmethod
     def _to_file(file, chunks, handle):
-        for chunk in chunks:
-            handle.write(chunk)
+        if not handle:
+            with open(file.name, 'wb') as handle:
+                for chunk in chunks:
+                    handle.write(chunk)
+        else:
+            for chunk in chunks:
+                handle.write(chunk)
 
     @retry(protocol.RETRY_CONDITIONS)
     def _poll_server(self):
