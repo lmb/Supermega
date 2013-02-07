@@ -36,17 +36,77 @@ class UnknownError(ServiceError):
 
 @service_error(-3)
 class RetryRequest(ServiceError):
-    """The server is too busy and requests a retry."""
+    """The server is too busy and requests a retry"""
+    pass
+
+@service_error(-5)
+class UploadFailed(ServiceError):
+    """The upload failed"""
+    pass
+
+@service_error(-6)
+class ConcurrentIPsExceeded(ServiceError):
+    """Too many different IPs are concurrently accessin this upload URL"""
+    pass
+
+@service_error(-7)
+class InvalidRange(ServiceError):
+    """An invalid range header was specified"""
+    pass
+
+@service_error(-8)
+class UploadURLExpired(ServiceError):
+    """The upload URL has expired"""
+    pass
+
+@service_error(-9)
+class ObjectNotFound(ServiceError):
+    """Object (typically node or user) not found"""
+    pass
+
+@service_error(-10)
+class CircularLinkingAttempted(ServiceError):
+    """A circular link was denied"""
+    pass
+
+@service_error(-11)
+class AccessViolation(ServiceError):
+    """An access violation occured (e.g. writing to a read-only share)"""
+
+@service_error(-12)
+class ObjectExists(ServiceError):
+    """The object already exists on the server"""
+    pass
+
+@service_error(-13)
+class ObjectIncomplete(ServiceError):
+    """The accessed object is incomplete"""
     pass
 
 @service_error(-15)
 class InvalidSessionId(ServiceError):
-    """The server indicates that the provided session id is invalid."""
+    """The server indicates that the provided session id is invalid"""
+    pass
+
+@service_error(-16)
+class UserBlocked(ServiceError):
+    """The user has been blocked"""
+    pass
+
+@service_error(-17)
+class QuotaExceeded(ServiceError):
+    """The user quota has been exceeded"""
+    pass
+
+@service_error(-18)
+class TemporarilyUnavailable(ServiceError):
+    """The resource is temporarily unavailable"""
+    # TODO: Should this be a retry condition?
     pass
 
 ### HTTP Errors
 class HTTPStatusError(ServiceError):
-    """The request failed with status {errno}."""
+    """The request failed with status {errno}"""
 
     @classmethod
     def for_status(cls, status, *args, **kwargs):
