@@ -67,6 +67,7 @@ class User(object):
         c, _ = mpi_to_bytes(b64decode(c))
         c = rsa_decrypt_with_partial(c, private_key)
 
+        # Take only first 43 bytes since the sid is 0 padded
         return b64encode(long_to_bytes(c)[:43])
 
     def hash(self, string):
@@ -144,14 +145,12 @@ class Meta(object):
     TYPE_INBOX = 3
     TYPE_TRASH = 4
 
-    def __init__(self, keystore, data = {}):
-        self._keystore = keystore
-
+    # Ignore spurious kwargs so we can pass keystore=? to EncryptedAttributes
+    def __init__(self, data, **kwargs):
         self.handle = data.get('h', None)
-        self.created = (data.has_key('ts') and
+        self.created = ('ts' in data and
             datetime.datetime.fromtimestamp(data['ts']) or None)
         self.owner = data.get('u', None)
-        # TODO: Garbage collect when parent is deleted?
         self.parent = data.get('p', None)
         self.type = data.get('t', None)
 
@@ -160,31 +159,36 @@ class Meta(object):
         try:
             meta_class = cls.TYPES[data['t']]
         except KeyError:
-            raise errors.SupermegaException('Invalid object / file type: {}'.format(data['t']))
+            raise errors.SupermegaException(
+                'Invalid object / file type: {}'.format(data['t']))
 
-        return meta_class(keystore, data)
+        return meta_class(data, keystore=keystore)
 
 meta_data_for = utils.registry(Meta, 'TYPES')
 
-@meta_data_for(Meta.TYPE_ROOT, Meta.TYPE_INBOX, Meta.TYPE_TRASH, Meta.TYPE_DIRECTORY)
-class Directory(Meta):
-    def __init__(self, keystore, data):
-        super(Directory, self).__init__(keystore, data)
+@meta_data_for(Meta.TYPE_ROOT, Meta.TYPE_INBOX, Meta.TYPE_TRASH)
+class Container(Meta):
+    def __init__(self, *args, **kwargs):
+        super(Container, self).__init__(*args, **kwargs)
         self.children = weakref.WeakSet()
 
     def __iter__(self):
         return iter(self.children)
 
     def __str__(self):
-        return '<{}.{} object with handle {}>'.format(self.__class__.__module__, self.__class__.__name__, self.handle)
+        return '<{}.{} object with handle {}>'.format(
+            self.__class__.__module__, self.__class__.__name__, self.handle)
+
+    def __repr__(self):
+        return self.__str__()
 
     @property
     def subdirs(self):
-        return itertools.ifilter(self.is_directory, self.children)
+        return itertools.ifilter(self.is_container, self.children)
 
     @property
     def files(self):
-        return itertools.ifilterfalse(self.is_directory, self.children)
+        return itertools.ifilterfalse(self.is_container, self.children)
 
     def walk(self):
         yield (self, self.subdirs, self.files)
@@ -194,19 +198,18 @@ class Directory(Meta):
                 yield result
 
     @staticmethod
-    def is_directory(obj):
-        return isinstance(obj, Directory)
+    def is_container(obj):
+        return isinstance(obj, Container)
 
-@meta_data_for(Meta.TYPE_FILE)
-class File(Meta):
-    def __init__(self, keystore, data, cipher_info = None):
-        super(File, self).__init__(keystore, data)
+class EncryptedAttributes(object):
+    def __init__(self, data, **kwargs):
+        super(EncryptedAttributes, self).__init__(data, **kwargs)
 
-        # TODO: Make this less kludgy by mapping subobjects in requests
-        self.size = data.get('s', None) or data['size']
+        keystore = kwargs['keystore']
+        cipher_info = kwargs.get('cipher_info', None)
 
         if not cipher_info:
-            ## Find a suitable user / share key to decrypt the file key
+            ## Find a suitable user / share key to decrypt the object key
             self.keys = dict([x.split(':') for x in data['k'].split('/')])
             key_id, intermediate_key = keystore.get_any(self.keys.iterkeys())
 
@@ -217,15 +220,8 @@ class File(Meta):
             cipher = AES.new(intermediate_key, mode=AES.MODE_ECB)
             cipher_info = decrypt(cipher, b64decode(self.keys[key_id]))
 
-        assert(len(cipher_info) == 32)
-
-        # 128bit key XORed with trailing 128bit,
-        # followed by upper 64bit of CTR mode IV,
-        # again followed by 64bit MAC
-        # Thanks http://julien-marchand.fr/blog/using-mega-api-with-python-examples/
-        self.key = strxor(cipher_info[0:16], cipher_info[16:])
-        self.iv = cipher_info[16:24]
-        self.mac = cipher_info[24:]
+        self._extract_cipher_spec(cipher_info)
+        assert(self.key is not None)
 
         ## Decrypt attributes (name as of now)
         cipher = AES.new(self.key, mode=AES.MODE_CBC, IV='\0'*16)
@@ -237,14 +233,40 @@ class File(Meta):
         attrs = json.loads(attrs[4:])
         self.name = attrs['n']
 
-    @staticmethod
-    def parse_download_url(url):
-        info = urlparse.urlparse(url).fragment.lstrip('!').split('!', 2)
-        return info[0], b64decode(info[1])
+    def _extract_cipher_spec(self, cipher_info):
+        raise NotImplementedError
+
+    def __str__(self):
+        return '<{} "{}" ({})>'.format(
+            self.__class__.__name__, self.name, self.handle)
+
+    __repr__ = __str__
+
+@meta_data_for(Meta.TYPE_DIRECTORY)
+class Directory(EncryptedAttributes, Container):
+    def _extract_cipher_spec(self, cipher_info):
+        assert(len(cipher_info) == 16)
+        self.key = cipher_info
+
+@meta_data_for(Meta.TYPE_FILE)
+class File(EncryptedAttributes, Meta):
+    def __init__(self, data, **kwargs):
+        super(File, self).__init__(data, **kwargs)
+        # TODO: Make this less kludgy by mapping subobjects in requests
+        self.size = data.get('s', None) or data['size']
+
+    def _extract_cipher_spec(self, cipher_info):
+        # 128bit key XORed with trailing 128bit,
+        # followed by upper 64bit of CTR mode IV,
+        # again followed by 64bit MAC
+        # Thanks http://julien-marchand.fr/blog/using-mega-api-with-python-examples/
+        self.key = strxor(cipher_info[0:16], cipher_info[16:])
+        self.iv = cipher_info[16:24]
+        self.mac = cipher_info[24:]
 
     def decrypt_from_stream(self, stream):
-        # Prefix (IV) is 64 bits, so we get a 128bit counter, just
-        # what the doctor ordered.
+        # Prefix (IV) is 64 bits, so we get a 128bit counter, just what the
+        # doctor ordered.
         # Caveat: this might overflow differently than the MEGA implementation.
         counter = Counter.new(64, prefix=self.iv, initial_value=0)
         cipher = AES.new(self.key, mode=AES.MODE_CTR, counter=counter)
@@ -258,15 +280,16 @@ class File(Meta):
 
             if not chunk:
                 if bytes_read != self.size:
-                    raise errors.SupermegaException("Corrupt download: file is too short")
+                    raise errors.SupermegaException(
+                        "Corrupt download: file is too short")
+                
+                file_mac = (strxor(file_mac[:4], file_mac[4:8]) +
+                    strxor(file_mac[8:12], file_mac[12:]))
+
                 # TODO: Should we use a constant time compare?
-
-                file_mac = strxor(file_mac[:4], file_mac[4:8]) + strxor(file_mac[8:12], file_mac[12:])
-
                 if file_mac != self.mac:
-                    fmac = bytes_to_long(file_mac)
-                    smac = bytes_to_long(self.mac)
-                    raise errors.SupermegaException("Corrupt download: invalid hash {} != {}".format(fmac, smac))
+                    raise errors.SupermegaException(
+                        "Corrupt download: invalid hash")
 
                 break
 
@@ -287,14 +310,13 @@ class File(Meta):
 
             yield chunk
 
+    @staticmethod
+    def parse_download_url(url):
+        info = urlparse.urlparse(url).fragment.lstrip('!').split('!', 2)
+        return info[0], b64decode(info[1])
 
     @staticmethod
     def chunk_lengths():
         # First 8 chunks are 128 kbyte, the rest 1024 kbyte
-        return itertools.chain([0x20000 * (i+1) for i in xrange(8)], itertools.repeat(0x100000))
-
-    def __str__(self):
-        return '<{}.{} "{}" [{}]>'.format(self.__class__.__module__, self.__class__.__name__, self.name, self.handle)
-
-    def __repr__(self):
-        return self.__str__()
+        return itertools.chain([0x20000 * (i+1) for i in xrange(8)],
+            itertools.repeat(0x100000))
