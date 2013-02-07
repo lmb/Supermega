@@ -9,9 +9,9 @@ What does it do right now?
 It pretty much does what all the other python MEGA.co.nz clients do (there are two I know of):
 
 * Lets you login
-* Gives you a list of files / directories (no names yet) to iterate over
+* Gives you a list of files / directories to iterate over
 * Lets you download one of your own files
-* Should let you download a public file (this isn't tested too much)
+* Lets you download a public file
 
 Right now it doesn't support ephemeral user accounts, sorry.
 
@@ -20,41 +20,70 @@ Why should I use it over XYZ?
 
 Supermega goes through more effort than the other client libs. Requests to and from the MEGA servers are validated against a schema, and as little as possible of the wheel is reinvented when it comes to cryptography. That is usually a good thing.
 
-Example
--------
+Examples
+--------
 
 _Download a file:_
 
-    import supermega
+```python
+import supermega
 
-    def to_disk(file, chunks):
-        with open(file.name, 'wb') as f:
-            for chunk in chunks:
-                f.write(chunk)
+def to_disk(file, chunks):
+    with open(file.name, 'wb') as f:
+        for chunk in chunks:
+            f.write(chunk)
 
-    s = supermega.Session()
-    s.login('user@example.org', 'password')
-    s.download(to_disk, 'https://mega.co.nz/#!FILE_URL')
+s = supermega.Session()
+s.login('user@example.org', 'password')
+s.download(to_disk, 'https://mega.co.nz/#!FILE_URL')
+```
+
+_Download a file into the current working directory:_
+
+```python
+import supermega
+
+s = supermega.Session()
+s.download_to_file('PUBLIC_URL')
+```
+
+_Download a file into an arbitrary file-like object:_
+```python
+import supermega
+
+s = supermega.Session()
+with open('FILENAME', 'wb') as f:
+    s.download_to_file('PUBLIC_URL', f)
+```
 
 _List files:_
 
-    import supermega
+```python
+import supermega
 
-    s = supermega.Session()
-    s.login('user@example.org', 'password')
+s = supermega.Session()
+s.login('user@example.org', 'password')
 
-    s.init_datastore()
-    for parent, subdirs, files in s.datastore.root.walk():
-        print "-----------------------"
-        print "For: {}".format(parent)
-        print "Subdirs:"
-        for subdir in subdirs:
-            print subdir
+s.init_datastore()
+for parent, subdirs, files in s.datastore.root.walk():
+    print "-----------------------"
+    print "For: {}".format(parent)
+    print "Subdirs:"
+    for subdir in subdirs:
+        print subdir
 
-        print
-        print "Files:"
-        for f in files:
-            print f
+    print
+    print "Files:"
+    for f in files:
+        print f
+```
+
+You can use the file objects as arguments to the Session.download* functions, although this only makes sense if you're logged in.
+
+Installing
+----------
+
+Should be as easy as doing a `pip install git+git://github.com/lmb/Supermega.git#egg=supermega`. The dependencies might be messed up, please let me know.
 
 How is it organized?
 --------------------
