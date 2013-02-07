@@ -66,9 +66,9 @@ class Session(object):
         req = protocol.FilesRequest()
         res = req.send(self)
 
-        self._maxaction = res.maxaction
+        self._maxaction = res['maxaction']
 
-        for data in res.files:
+        for data in res['files']:
             meta = models.Meta.for_data(self.keystore, data)
             self.datastore.add(meta)
 
@@ -84,7 +84,7 @@ class Session(object):
             req = protocol.FileDownloadRequest(file)
             res = req.send(self)
 
-        req = requests.get(res.url, stream=True)
+        req = requests.get(res['url'], stream=True)
         func(file, file.decrypt_from_stream(req.raw), *args, **kwargs)
 
     def download_to_file(self, file, handle):
@@ -94,13 +94,6 @@ class Session(object):
     def _to_file(file, chunks, handle):
         for chunk in chunks:
             handle.write(chunk)
-
-    def _update_filetree(self, res):
-        self._maxaction = res.maxaction
-
-        for data in res.files:
-            meta = models.Meta.for_data(self.keystore, data)
-            self.datastore.add(meta)
 
     @retry(protocol.RETRY_CONDITIONS)
     def _poll_server(self):
@@ -112,10 +105,10 @@ class Session(object):
             res = protocol.ServerResponse()
             res.load(req, content)
 
-            if hasattr(res, 'wait_url'):
-                self._reqs_session.get(res.wait_url, params = {'ssl': None, 'sid': None})
+            if 'wait_url' in res:
+                self._reqs_session.get(res['wait_url'], params = {'ssl': None, 'sid': None})
             else:
                 # TODO: Handle opcode
-                print "opcode = {}, maxaction = {}".format(res.opcode, res.maxaction)
-                self._maxaction = res.maxaction
+                print "opcode = {}, maxaction = {}".format(res['opcode'], res['maxaction'])
+                self._maxaction = res['maxaction']
     

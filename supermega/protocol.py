@@ -3,22 +3,33 @@ import json
 from itertools import izip
 from requests.exceptions import Timeout
 
-import transport
-import errors
-import utils
-import schemata
+from . import transport
+from . import errors
+from . import utils
+from . import schemata
 
 TRANSACTION_SCHEMA = schemata.Schema.from_file('transaction.json')
 RETRY_CONDITIONS = (Timeout, errors.RetryRequest, errors.HTTP500Error)
 
+# TODO: Maybe inherit from dict?
 class Operation(object):
     OPCODE_KEY = 'a'
+    _data = {}
 
     def read_schema(self, part, schema):
         self._schema, self._mapping = schemata.load_bundle(schema, part)
 
     def is_mapped_attr(self, attr):
         return attr in self._mapping
+
+    def get(self, *args, **kwargs):
+        return self._data.get(*args, **kwargs)
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __contains__(self, key):
+        return self._data.__contains__(key)
 
 class Request(Operation):
     """Represents a request to the MEGA servers.
@@ -34,7 +45,7 @@ class Request(Operation):
         self._schema.validate(value, (mapped,))
 
     def as_serializable_dict(self):
-        data = { mapped: getattr(self, attr, None) for attr, mapped in \
+        data = { mapped: self._data[attr] for attr, mapped in \
             self._mapping.items() }
 
         # TODO: Validate complete dict
@@ -43,12 +54,12 @@ class Request(Operation):
 
         return data
 
-    def __setattr__(self, attr, value):
+    def __setitem__(self, attr, value):
         # TODO: Possibly restrict setting to mapped values
-        if hasattr(self, "_mapping") and self.is_mapped_attr(attr):
+        if self.is_mapped_attr(attr):
             self.validate_attr(attr, value)
 
-        super(Request, self).__setattr__(attr, value)
+        self._data[attr] = value
 
     def send(self, session):
         transaction = Transaction(self)
@@ -65,16 +76,25 @@ class Response(Operation):
             data = json.loads(data)
 
         self._schema.validate(data)
+        self._load(self._data, data, self._mapping)
 
-        for attr_to, attr_from in self._mapping.iteritems():
-            if attr_from in data:
-                setattr(self, attr_to, data[attr_from])
+    def _load(self, container, data, mapping):
+        for attr_to, attr_from in mapping.iteritems():
+            if isinstance(attr_from, tuple):
+                mapping = attr_from[1]
+                attr_from = attr_from[0]
+                container[attr_to] = {}
+
+                self._load(container[attr_to], data[attr_from], mapping)
+            elif attr_from in data:
+                container[attr_to] = data[attr_from]
 
     def read_schema(self, *args, **kwargs):
         super(Response, self).read_schema('response', *args, **kwargs)
 
     def as_dict(self):
-        return { attr: getattr(self, attr) for attr in self._mapping.iterkeys() }
+        """Returns all response data that has been mapped."""
+        return { key: self._data[key] for key in self._mapping.iterkeys() }
 
 def is_response_to(request_class):
     def decorate(response_class):
@@ -132,8 +152,8 @@ class UserSessionRequest(Request):
     def __init__(self, user):
         self.read_schema('user-session.bundle.json')
 
-        self.user = user.username
-        self.hash = user.userhash
+        self['user'] = user.username
+        self['hash'] = user.userhash
 
 @is_response_to(UserSessionRequest)
 class UserSessionResponse(Response):
@@ -154,7 +174,7 @@ class UserGetResponse(Response):
 class FilesRequest(Request):
     def __init__(self):
         self.read_schema('files.bundle.json')
-        self.c = 1 # TODO: Find out what this means
+        self['c'] = 1 # TODO: Find out what this means
 
 @is_response_to(FilesRequest)
 class FilesResponse(Response):
@@ -166,8 +186,8 @@ class FileDownloadRequest(Request):
     def __init__(self, file_meta):
         self.read_schema('file-download.bundle.json')
 
-        self.handle = file_meta.handle
-        self.g = 1 # TODO: What does this mean?
+        self['handle'] = file_meta.handle
+        self['g'] = 1 # TODO: What does this mean?
 
 @is_response_to(FileDownloadRequest)
 class FileDownloadResponse(Response):
@@ -179,8 +199,8 @@ class PublicFileDownloadRequest(Request):
     def __init__(self, handle):
         self.read_schema('file-download-public.bundle.json')
 
-        self.handle = handle
-        self.g = 1
+        self['handle'] = handle
+        self['g'] = 1
 
 @is_response_to(PublicFileDownloadRequest)
 class FileDownloadReponse(Response):

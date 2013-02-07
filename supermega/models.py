@@ -295,3 +295,6 @@ class File(Meta):
 
     def __str__(self):
         return '<{}.{} "{}" [{}]>'.format(self.__class__.__module__, self.__class__.__name__, self.name, self.handle)
+
+    def __repr__(self):
+        return self.__str__()
