@@ -47,11 +47,9 @@ class Request(Operation):
     def as_serializable_dict(self):
         data = { mapped: self._data[attr] for attr, mapped in \
             self._mapping.items() }
-
-        # TODO: Validate complete dict
-        self._schema.validate(self.opcode, (Operation.OPCODE_KEY,))
         data[Operation.OPCODE_KEY] = self.opcode
 
+        self._schema.validate(data)
         return data
 
     def __setitem__(self, attr, value):
