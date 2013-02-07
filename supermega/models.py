@@ -4,7 +4,8 @@ from Crypto.Util.strxor import strxor
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 from Crypto.Util import Counter
 from Crypto import Random
-from utils import chunks, b64encode, b64decode, decrypt, mpi_to_bytes, rsa_decrypt_with_partial, RSAPartialKey
+
+from .utils import chunks, b64encode, b64decode, decrypt, mpi_to_bytes, rsa_decrypt_with_partial, RSAPartialKey
 
 import itertools
 import weakref
@@ -12,8 +13,8 @@ import datetime
 import json
 import urlparse
 
-import utils
-import errors
+from . import utils
+from . import errors
 
 class User(object):
     def __init__(self, session, username, password):

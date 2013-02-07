@@ -1,14 +1,16 @@
-from models import User, Keystore
-from utils import retry
+from __future__ import absolute_import
+
+from .models import User, Keystore
+from .utils import retry
 from itertools import count
 
 import requests
 import logging
 
-import errors
-import protocol
-import transport
-import models
+from . import errors
+from . import protocol
+from . import transport
+from . import models
 
 __all__ = [ 'Session' ]
 

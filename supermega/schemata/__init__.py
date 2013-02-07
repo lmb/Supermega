@@ -3,7 +3,7 @@ import jsonschema
 import os.path
 import urlparse
 
-import errors
+from .. import errors
 
 class Resolver(jsonschema.RefResolver):
     cache = {}

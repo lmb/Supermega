@@ -1,8 +1,8 @@
 import requests
-import errors
-
-from utils import retry
 from itertools import chain
+
+from . import errors
+from .utils import retry
 
 class APIRequest(object):
     API_URL = 'https://g.api.mega.co.nz'

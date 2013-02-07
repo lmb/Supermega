@@ -1,4 +1,4 @@
-from utils import registry
+from .utils import registry
 
 class SupermegaException(Exception):
     """Supermega exception base class."""
