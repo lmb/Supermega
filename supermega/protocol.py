@@ -141,11 +141,13 @@ class Transaction(list):
             res.load(req, response_data)
             self.append(res)
 
-    @utils.retry(RETRY_CONDITIONS)
     def send(self, session):
         request = transport.TransactionRequest(self, session)
+        return self._send(request)
+        
+    @utils.retry(RETRY_CONDITIONS)
+    def _send(self, request):
         data = request.send().content
-
         response = self.__class__()
         response.unserialize(self, data)
         return response

@@ -128,7 +128,7 @@ def retry(ExceptionToCheck, tries=3, delay=5, backoff=2, logger=None):
     def deco_retry(f):
 
         @wraps(f)
-        def f_retry(*args, **kwargs):
+        def retry_decorator(*args, **kwargs):
             mtries, mdelay = tries, delay
             while mtries > 1:
                 try:
@@ -144,5 +144,5 @@ def retry(ExceptionToCheck, tries=3, delay=5, backoff=2, logger=None):
                     mdelay *= backoff
             return f(*args, **kwargs)
 
-        return f_retry  # true decorator
+        return retry_decorator  # true decorator
     return deco_retry

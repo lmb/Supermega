@@ -12,6 +12,7 @@ class APIRequest(object):
         self._params = params
         self._data = None
         self._method = 'POST'
+        self._sequence = next(self._session.sequence)
 
     def send(self, timeout=10):
         url = "%s/%s" % (self.API_URL, self.ENDPOINT)
@@ -19,7 +20,7 @@ class APIRequest(object):
         headers = {'Content-type': 'application/json'}
 
         params = self._params
-        params['id'] = next(self._session.sequence)
+        params['id'] = self._sequence
 
         res = self._session._reqs_session.request(self._method, url,
             timeout=timeout, params = params, headers = headers, data = self._data)
