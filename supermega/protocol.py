@@ -73,15 +73,28 @@ class Response(Operation):
     def _load(self, container, data, mapping):
         for attr_to, attr_from in mapping.iteritems():
             if not attr_from:
+                # Take data verbatim
                 container[attr_to] = data
 
             elif isinstance(attr_from, (list, tuple)):
+                # Map nested attributes
                 mapping = attr_from[1]
                 attr_from = attr_from[0]
-                container[attr_to] = {}
-                self._load(container[attr_to], data[attr_from], mapping)
+
+                if isinstance(data[attr_from], list):
+                    # Map a list of objects
+                    container[attr_to] = []
+                    for entry in data[attr_from]:
+                        mapped_entry = {}
+                        self._load(mapped_entry, entry, mapping)
+                        container[attr_to].append(mapped_entry)
+                else:
+                    # Map an object
+                    container[attr_to] = {}
+                    self._load(container[attr_to], data[attr_from], mapping)
 
             elif attr_from in data:
+                # Map a -> b
                 container[attr_to] = data[attr_from]
 
     def read_schema(self, *args, **kwargs):
