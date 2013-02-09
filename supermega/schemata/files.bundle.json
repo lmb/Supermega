@@ -22,7 +22,16 @@
     },
 
     "mapping": {
-        "files": "f",
+        "files": ["f", {
+            "handle": "h",
+            "timestamp": "ts",
+            "owner": "u",
+            "parent": "p",
+            "type": "t",
+            "keys": "k",
+            "attrs": "a",
+            "size": "s"
+        }],
         "maxaction": "sn"
     }
 }}

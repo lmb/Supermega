@@ -78,7 +78,7 @@ class Response(Operation):
 
     def _load(self, container, data, mapping):
         for attr_to, attr_from in mapping.iteritems():
-            if isinstance(attr_from, tuple):
+            if isinstance(attr_from, (list, tuple)):
                 mapping = attr_from[1]
                 attr_from = attr_from[0]
                 container[attr_to] = {}

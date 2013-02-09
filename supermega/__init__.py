@@ -79,7 +79,7 @@ class Session(object):
             req = protocol.PublicFileDownloadRequest(handle)
             res = req.send(self)
 
-            file = models.File(res.as_dict(), keystore=self.keystore, cipher_info=cipher_info)
+            file = models.File(res.as_dict(), handle=handle, keystore=self.keystore, cipher_info=cipher_info)
         else:
             req = protocol.FileDownloadRequest(file)
             res = req.send(self)

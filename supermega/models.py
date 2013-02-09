@@ -147,20 +147,20 @@ class Meta(object):
 
     # Ignore spurious kwargs so we can pass keystore=? to EncryptedAttributes
     def __init__(self, data, **kwargs):
-        self.handle = data.get('h', None)
-        self.created = ('ts' in data and
-            datetime.datetime.fromtimestamp(data['ts']) or None)
-        self.owner = data.get('u', None)
-        self.parent = data.get('p', None)
-        self.type = data.get('t', None)
+        self.handle = data.get('handle', None) or kwargs['handle']
+        self.created = ('timestamp' in data and
+            datetime.datetime.fromtimestamp(data['timestamp']) or None)
+        self.owner = data.get('owner', None)
+        self.parent = data.get('parent', None)
+        self.type = data.get('type', None)
 
     @classmethod
     def for_data(cls, keystore, data):
         try:
-            meta_class = cls.TYPES[data['t']]
+            meta_class = cls.TYPES[data['type']]
         except KeyError:
             raise errors.SupermegaException(
-                'Invalid object / file type: {}'.format(data['t']))
+                'Invalid object / file type: {}'.format(data['type']))
 
         return meta_class(data, keystore=keystore)
 
@@ -210,7 +210,7 @@ class EncryptedAttributes(object):
 
         if not cipher_info:
             ## Find a suitable user / share key to decrypt the object key
-            self.keys = dict([x.split(':') for x in data['k'].split('/')])
+            self.keys = dict([x.split(':') for x in data['keys'].split('/')])
             key_id, intermediate_key = keystore.get_any(self.keys.iterkeys())
 
             if not key_id:
@@ -225,7 +225,7 @@ class EncryptedAttributes(object):
 
         ## Decrypt attributes (name as of now)
         cipher = AES.new(self.key, mode=AES.MODE_CBC, IV='\0'*16)
-        attrs = decrypt(cipher, b64decode(data.get('a', None) or data['attrs'])).strip('\0')
+        attrs = decrypt(cipher, b64decode(data['attrs'])).strip('\0')
 
         if not attrs.startswith('MEGA'):
             raise SupermegaException('File attributes are not in a valid format')
@@ -253,7 +253,7 @@ class File(EncryptedAttributes, Meta):
     def __init__(self, data, **kwargs):
         super(File, self).__init__(data, **kwargs)
         # TODO: Make this less kludgy by mapping subobjects in requests
-        self.size = data.get('s', None) or data['size']
+        self.size = data['size']
 
     def _extract_cipher_spec(self, cipher_info):
         # 128bit key XORed with trailing 128bit,
