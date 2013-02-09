@@ -50,17 +50,12 @@ class Session(object):
         return "%s for user '%s'" % (self.__name__, self.user.username)
 
     def login(self, username, password):
-        self.user = User(self, username, password)
+        self.user = User(self)
+        self.user.login(username, password)
 
-        req = protocol.UserSessionRequest(self.user)
-        res = req.send(self)
-        self.user.decrypt_session_id(**res.as_dict())
-
-        self._reqs_session.params['sid'] = self.user.session_id
-
-        req = protocol.UserGetRequest()
-        res = req.send(self)
-        self.user.update(**res.as_dict())
+    def ephemeral(self):
+        self.user = User(self)
+        self.user.ephemeral()
 
     def init_datastore(self):
         req = protocol.FilesRequest()

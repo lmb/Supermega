@@ -1,0 +1,23 @@
+{
+    "request": {
+        "schema": {
+            "type": "object",
+                "properties": {
+                    "a": {"type": "string", "pattern": "up", "required": true},
+                    "k": {"type": "string", "required": true},
+                    "ts": {"type": "string", "required": true}
+                }
+        },
+
+        "mapping": {
+            "key": "k",
+            "challenge": "ts"
+        }
+    },
+    "response": {
+        "schema": {
+            "type": "string"
+        },
+        "mapping": "handle"
+    }
+}

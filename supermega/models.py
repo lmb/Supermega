@@ -3,7 +3,7 @@ from Crypto.PublicKey import RSA
 from Crypto.Util.strxor import strxor
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 from Crypto.Util import Counter
-from Crypto import Random
+from Crypto.Random import random
 
 from .utils import chunks, b64encode, b64decode, decrypt, mpi_to_bytes, rsa_decrypt_with_partial, RSAPartialKey
 
@@ -12,26 +12,67 @@ import weakref
 import datetime
 import json
 import urlparse
+import os
 
 from . import utils
 from . import errors
+from . import protocol
 
 class User(object):
-    def __init__(self, session, username, password):
+    AES_KEY_LENGTH_BITS = 128
+
+    def __init__(self, session):
+        self._session = session
+
+    def login(self, username, password):
         self.username = username
         self.password = password
         self._derived = User.derive_key(password)
-        self._session = session
 
-    def decrypt_session_id(self, master_key, session_id, private_key):
-        master_key      = self._decrypt_master_key(master_key, self._derived)
-        private_key     = self._decrypt_private_key(private_key, master_key)
-        self.session_id = self._decrypt_sid(session_id, private_key)
+        req = protocol.UserSessionRequest(username, self.userhash)
+        res = req.send(self._session)
 
-        self.master_key  = master_key
-        self.private_key = private_key
+        self._decrypt_master_key(res['master_key'])
+        self._decrypt_private_key(res['private_key'])
+        self._decrypt_csid(res['session_id'])
 
-    def update(self, public_key, userhandle):
+        # This effectively completes the login, sid will be appended to all
+        # requests going forward.
+        self._session._reqs_session.params['sid'] = self.session_id
+
+        self.update()
+
+    def ephemeral(self):
+        self._derived = long_to_bytes(
+            random.getrandbits(self.AES_KEY_LENGTH_BITS))
+        self.master_key = long_to_bytes(
+            random.getrandbits(self.AES_KEY_LENGTH_BITS))
+        challenge = long_to_bytes(random.getrandbits(self.AES_KEY_LENGTH_BITS))
+
+        cipher = AES.new(self._derived, mode=AES.MODE_CBC, IV='\0'*16)
+        cipher_master = AES.new(self.master_key, mode=AES.MODE_CBC, IV='\0'*16)
+
+        req = protocol.UserUpdateRequest(
+            b64encode(utils.encrypt(cipher, self.master_key)),
+            b64encode(challenge + utils.encrypt(cipher_master, challenge))
+        )
+        res = req.send(self._session)
+
+        req = protocol.EphemeralUserSessionRequest(res['handle'])
+        res = req.send(self._session)
+
+        self._decrypt_master_key(res['master_key'])
+        self._decrypt_tsid(res['session_id'])
+
+        self._session._reqs_session.params['sid'] = self.session_id
+
+    def update(self):
+        req = protocol.UserInformationRequest()
+        res = req.send(self._session)
+
+        public_key = res['public_key']
+        userhandle = res['userhandle']
+
         self.userhandle = userhandle
         self._session.keystore[userhandle] = self.master_key
 
@@ -46,14 +87,14 @@ class User(object):
         self.rsa = RSA.construct((n, e, pk.d, pk.p, pk.q, pk.u))
         del self.private_key
 
-    def _decrypt_master_key(self, c, derived_key):
-        cipher = AES.new(derived_key, mode=AES.MODE_ECB)
-        return decrypt(cipher, b64decode(c))
+    def _decrypt_master_key(self, c):
+        cipher = AES.new(self._derived, mode=AES.MODE_ECB)
+        self.master_key = decrypt(cipher, b64decode(c))
 
-    def _decrypt_private_key(self, c, master_key):
-        assert(master_key != '')
+    def _decrypt_private_key(self, c):
+        assert(self.master_key != '')
 
-        cipher = AES.new(master_key, mode=AES.MODE_ECB)
+        cipher = AES.new(self.master_key, mode=AES.MODE_ECB)
         c = decrypt(cipher, b64decode(c))
         
         p, offset = mpi_to_bytes(c)
@@ -61,14 +102,23 @@ class User(object):
         d, offset = mpi_to_bytes(c, offset)
         u, _      = mpi_to_bytes(c, offset)
 
-        return RSAPartialKey(*map(bytes_to_long, (p, q, d, u)))
+        self.private_key = RSAPartialKey(*map(bytes_to_long, (p, q, d, u)))
 
-    def _decrypt_sid(self, c, private_key):
+    def _decrypt_csid(self, c):
         c, _ = mpi_to_bytes(b64decode(c))
-        c = rsa_decrypt_with_partial(c, private_key)
+        c = rsa_decrypt_with_partial(c, self.private_key)
 
         # Take only first 43 bytes since the sid is 0 padded
-        return b64encode(long_to_bytes(c)[:43])
+        self.session_id = b64encode(long_to_bytes(c)[:43])
+
+    def _decrypt_tsid(self, c):
+        c_binary = b64decode(c)
+        cipher = AES.new(self.master_key, mode=AES.MODE_CBC, IV='\0'*16)
+
+        if not utils.encrypt(cipher, c_binary[:16]) == c_binary[-16:]:
+            raise errors.SupermegaException('Temporary session id is invalid')
+
+        self.session_id = c
 
     def hash(self, string):
         return User.hash_with_key(string, self._derived)

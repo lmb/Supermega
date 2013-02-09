@@ -1,6 +1,6 @@
 import os.path
 import json
-from itertools import izip
+from itertools import izip, ifilter
 from requests.exceptions import Timeout
 
 from . import transport
@@ -32,8 +32,7 @@ class Operation(object):
         return self._data.__contains__(key)
 
 class Request(Operation):
-    """Represents a request to the MEGA servers.
-    Instantiate(args?) -> set data -> serialize."""
+    """Represents a request to the MEGA servers."""
 
     def read_schema(self, *args, **kwargs):
         super(Request, self).read_schema('request', *args, **kwargs)
@@ -41,12 +40,12 @@ class Request(Operation):
             [Operation.OPCODE_KEY]['pattern'])
 
     def validate_attr(self, attr, value):
-        mapped = self._mapping[attr]
-        self._schema.validate(value, (mapped,))
+        mapped = self._mapping[attr] and (self._mapping[attr],) or ()
+        self._schema.validate(value, mapped)
 
     def as_serializable_dict(self):
-        data = { mapped: self._data[attr] for attr, mapped in \
-            self._mapping.items() }
+        data = { self._mapping[attr]: self._data[attr] for attr in \
+            ifilter(self._data.__contains__, self._mapping.iterkeys()) }
         data[Operation.OPCODE_KEY] = self.opcode
 
         self._schema.validate(data)
@@ -64,26 +63,24 @@ class Request(Operation):
         return transaction.send(session)[0]
 
 class Response(Operation):
-    """Represents a response from the MEGA servers.
-    Instantiate(string or dict) -> read data."""
+    """Represents a response from the MEGA servers."""
 
     def load(self, request, data):
         self.request = request
-
-        if isinstance(data, basestring):
-            data = json.loads(data)
-
         self._schema.validate(data)
         self._load(self._data, data, self._mapping)
 
     def _load(self, container, data, mapping):
         for attr_to, attr_from in mapping.iteritems():
-            if isinstance(attr_from, (list, tuple)):
+            if not attr_from:
+                container[attr_to] = data
+
+            elif isinstance(attr_from, (list, tuple)):
                 mapping = attr_from[1]
                 attr_from = attr_from[0]
                 container[attr_to] = {}
-
                 self._load(container[attr_to], data[attr_from], mapping)
+
             elif attr_from in data:
                 container[attr_to] = data[attr_from]
 
@@ -147,26 +144,49 @@ class Transaction(list):
 
 #############
 class UserSessionRequest(Request):
-    def __init__(self, user):
+    def __init__(self, user, hash):
         self.read_schema('user-session.bundle.json')
 
-        self['user'] = user.username
-        self['hash'] = user.userhash
+        self['user'] = user
+        if hash:
+            self['hash'] = hash
 
 @is_response_to(UserSessionRequest)
 class UserSessionResponse(Response):
     def __init__(self):
         self.read_schema('user-session.bundle.json')
 
-#############
-class UserGetRequest(Request):
-    def __init__(self):
-        self.read_schema('user-get.bundle.json')
+class EphemeralUserSessionRequest(Request):
+    def __init__(self, handle):
+        self.read_schema('user-session-ephemeral.bundle.json')
+        self['handle'] = handle
 
-@is_response_to(UserGetRequest)
-class UserGetResponse(Response):
+@is_response_to(EphemeralUserSessionRequest)
+class EphemeralUserSessionResponse(Response):
     def __init__(self):
-        self.read_schema('user-get.bundle.json')
+        self.read_schema('user-session-ephemeral.bundle.json')
+
+#############
+class UserInformationRequest(Request):
+    def __init__(self):
+        self.read_schema('user-information.bundle.json')
+
+@is_response_to(UserInformationRequest)
+class UserInformationResponse(Response):
+    def __init__(self):
+        self.read_schema('user-information.bundle.json')
+
+#############
+class UserUpdateRequest(Request):
+    def __init__(self, key, challenge):
+        self.read_schema('user-update.bundle.json')
+        self['key'] = key
+        self['challenge'] = challenge
+
+@is_response_to(UserUpdateRequest)
+class UserUpdateReponse(Response):
+    def __init__(self):
+        self.read_schema('user-update.bundle.json')
 
 #############
 class FilesRequest(Request):

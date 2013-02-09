@@ -1,0 +1,29 @@
+{
+    "request": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "a": {"type": "string", "pattern": "us", "required": true},
+                "user": {"type": "string", "required": true}
+            }
+        },
+
+        "mapping": {
+            "handle": "user"
+        }
+    },
+    "response": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "tsid": {"type": "string", "required": true},
+                "k": {"type": "string", "required": true}
+            }
+        },
+
+        "mapping": {
+            "session_id": "tsid",
+            "master_key": "k"
+        }
+    }
+}

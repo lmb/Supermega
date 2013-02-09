@@ -59,5 +59,10 @@ OPERATION_SCHEMA = Schema.from_file('operation.json')
 def load_bundle(bundle_file, part):
     bundle = Schema.load_json(bundle_file)
     OPERATION_SCHEMA.validate(bundle)
+
+    mapping = bundle[part]['mapping']
+    if isinstance(mapping, basestring):
+        mapping = {mapping: None}
+
     return (Schema("{}:{}".format(bundle_file, part), bundle[part]['schema']),
-        bundle[part]['mapping'])
+        mapping)

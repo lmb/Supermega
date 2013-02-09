@@ -10,7 +10,7 @@
                     "required": true
                 },
                 "mapping": {
-                    "type": "object",
+                    "type": [{"type": "object"}, {"type": "string"}],
                     "required": true
                 }
             }

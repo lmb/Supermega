@@ -2,6 +2,7 @@ import unittest
 import hashlib
 
 from .. import Session
+from .. import models
 
 class TestSession(unittest.TestCase):
 	def setUp(self):
@@ -20,3 +21,11 @@ class TestSession(unittest.TestCase):
 			self.assertEqual(hash.hexdigest(), sha256)
 
 		self.sess.download(verify_hash, url)
+
+	def test_ephemeral_account(self):
+		sess = self.sess
+
+		user = models.User(sess)
+		user.ephemeral()
+
+		sess.init_datastore()
