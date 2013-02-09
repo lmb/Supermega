@@ -29,3 +29,6 @@ class TestSession(unittest.TestCase):
 		user.ephemeral()
 
 		sess.init_datastore()
+
+	def test_key_derivation(self):
+		self.assertEqual(models.User.derive_key("password"), 'd\x039r^n\xbd\x13\xa2_\x00R\x12\x9f|\xb1')
