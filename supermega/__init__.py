@@ -22,7 +22,6 @@ import logging
 from . import errors
 from . import protocol
 from . import transport
-from . import models
 from . import utils
 from . import errors
 from . import protocol
@@ -32,8 +31,8 @@ __all__ = [ 'Session', 'File', 'User' ]
 class Session(object):
     def __init__(self, username = None, password = None):
         self.sequence = itertools.count(0)
-        self.keystore = models.Keystore()
-        self.datastore = models.Datastore()
+        self.keystore = Keystore()
+        self.datastore = Datastore()
 
         # self._poller = gevent.Greenlet(self._poll_server)
 
@@ -99,17 +98,17 @@ class Session(object):
 
         self._maxaction = res['maxaction']
         for data in res['files']:
-            meta = models.Meta.for_data(data, self)
+            meta = Meta.for_data(data, self)
             self.datastore.add(meta)
 
     def download(self, func, file, *args, **kwargs):
         if isinstance(file, basestring):
-            (handle, cipher_info) = models.File.parse_download_url(file)
+            (handle, cipher_info) = File.parse_download_url(file)
 
             req = protocol.PublicFileDownloadRequest(handle)
             res = req.send(self)
 
-            file = models.File.deserialize(res.as_dict(), handle=handle,
+            file = File.deserialize(res.as_dict(), handle=handle,
                 session=self, cipher_info=cipher_info)
 
             req = self._reqs_session.get(res['url'], stream=True,
