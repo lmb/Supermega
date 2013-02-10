@@ -363,20 +363,34 @@ class Container(Meta):
     itself. In the MEGA storage model these are the special nodes (root, trash,
     etc.) as well as directories."""
 
+    TYPE_TO_NAME = {
+        Meta.TYPE_ROOT: 'ROOT',
+        Meta.TYPE_INBOX: 'INBOX',
+        Meta.TYPE_TRASH: 'TRASH'
+    }
+
     def _deserialize(self, data, kwargs):
         super(Container, self)._deserialize(data, kwargs)
         self.children = weakref.WeakSet()
         self.type = data['type']
+        self.name = self.TYPE_TO_NAME.get(self.type, None)
+
+    def __getitem__(self, name):
+        """Retrieve a contained item by its name."""
+        for obj in self.children:
+            if obj.name == name:
+                return obj
+
+        raise KeyError('{} is not a child of this container'.format(repr(name)))
 
     def __iter__(self):
         return iter(self.children)
 
     def __str__(self):
-        return '<{}.{} object with handle {}>'.format(
-            self.__class__.__module__, self.__class__.__name__, self.handle)
+        return '<{} {} ({})>'.format(self.__class__.__name__, self.name,
+            self.handle)
 
-    def __repr__(self):
-        return self.__str__()
+    __repr__ = __str__
 
     @property
     def subdirs(self):
@@ -392,6 +406,32 @@ class Container(Meta):
         for subdir in self.subdirs:
             for result in subdir.walk():
                 yield result
+
+    def print_tree(self, prefix = ""):
+        """Pretty print the tree downwards from this node, to stdout.
+
+        This is useful for inspecting the contents of your account in an
+        interactive session.
+
+        >>> s = supermega.Session('user@example.org', 'password')
+        >>> s.root.print_tree()
+        + <Container ROOT (ID)>
+          + <Directory "Testfolder" (ID)>
+              <File "File 1.dmg" (ID)>
+            <File "File 1.pdf" (ID)>
+            <File "File 2.txt" (ID)>
+            <File "File 3.png" (ID)>
+            <File "File 4.wav" (ID)>
+        """
+
+        print '{}+ {}'.format(prefix, self.__str__())
+
+        for subdir in self.subdirs:
+            subdir.print_tree(prefix + "  ")
+
+        for f in self.files:
+            print '{}    {}'.format(prefix, repr(f))
+
 
     @staticmethod
     def is_container(obj):
