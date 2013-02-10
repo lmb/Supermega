@@ -9,11 +9,10 @@ What does it do right now?
 It pretty much does what all the other python MEGA.co.nz clients do (there are two I know of):
 
 * Lets you login
+* Lets you use an ephemeral account
 * Gives you a list of files / directories to iterate over
-* Lets you download one of your own files
 * Lets you download a public file
-
-Right now it doesn't support ephemeral user accounts, sorry.
+* Upload / download / move / delete of your own files
 
 Why should I use it over XYZ?
 -----------------------------
@@ -22,6 +21,25 @@ Supermega goes through more effort than the other client libs. Requests to and f
 
 Examples
 --------
+
+_Neat stuff:_
+y
+```python
+import supermega
+
+s1 = supermega.Session()
+s1.login('user1@example.org', 'pass1')
+s1.init_datastore()
+
+s2 = supermega.Session()
+s2.login('user2@example.org', 'pass2')
+s2.init_datastore()
+
+source_file = s2.datastore['FILE_ID'] # Try iterating s2.datastore.root.walk()
+new_file_on_s1 = supermega.File.upload(s1.datastore.root, source_file)
+```
+
+Source file from account 2 is now on account 1 (this of course involves downloading the file from account 2 first).
 
 _Download a file:_
 

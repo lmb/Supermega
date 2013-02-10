@@ -1,8 +1,8 @@
 import os.path
 import json
 import copy
-from itertools import izip, ifilter
-from requests.exceptions import Timeout
+import itertools
+import requests.exceptions
 
 from . import transport
 from . import errors
@@ -10,7 +10,8 @@ from . import utils
 from . import schemata
 
 TRANSACTION_SCHEMA = schemata.Schema.from_file('transaction.json')
-RETRY_CONDITIONS = (Timeout, errors.RetryRequest, errors.HTTP500Error)
+RETRY_CONDITIONS = (requests.exceptions.Timeout, errors.RetryRequest,
+    errors.HTTP500Error)
 
 # TODO: Maybe inherit from dict?
 class Operation(object):
@@ -98,7 +99,7 @@ class Transaction(list):
 
         TRANSACTION_SCHEMA.validate(data)
 
-        for req, response_data in izip(request, data):
+        for req, response_data in itertools.izip(request, data):
             res = req.RESPONSE()
             res.load(req, response_data)
             self.append(res)

@@ -1,8 +1,7 @@
 import unittest
 import hashlib
 
-from .. import Session
-from .. import models
+from .. import Session, User
 
 class TestSession(unittest.TestCase):
 	def setUp(self):
@@ -25,10 +24,10 @@ class TestSession(unittest.TestCase):
 	def test_ephemeral_account(self):
 		sess = self.sess
 
-		user = models.User(sess)
+		user = User(sess)
 		user.ephemeral()
 
 		sess.init_datastore()
 
 	def test_key_derivation(self):
-		self.assertEqual(models.User.derive_key("password"), 'd\x039r^n\xbd\x13\xa2_\x00R\x12\x9f|\xb1')
+		self.assertEqual(User.derive_key("password"), 'd\x039r^n\xbd\x13\xa2_\x00R\x12\x9f|\xb1')
