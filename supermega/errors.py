@@ -16,6 +16,10 @@ class ValidationError(SupermegaException):
     def __str__(self):
         return "{} (schema: {}, instance: {})".format(self.message, self.schema.name, self.instance)
 
+class CorruptFile(SupermegaException):
+    """A file download was corrupted"""
+    pass
+
 class ServiceError(SupermegaException):
     """The MEGA service has indicated an error."""
 

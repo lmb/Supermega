@@ -3,6 +3,7 @@ import struct
 from itertools import izip
 from cStringIO import StringIO
 from Crypto.PublicKey import RSA
+from Crypto.Cipher import AES
 from Crypto.Util.number import bytes_to_long
 from collections import namedtuple
 
@@ -22,22 +23,33 @@ def chunks(s, n):
     for i in xrange(0, len(s), n):
         yield s[i:i+n]
 
-def decrypt(cipher, ciphertext, block_size=16):
-    buf = StringIO()
-    for chunk in chunks(ciphertext, block_size):
-        length = len(chunk)
-        if length < block_size:
-            chunk = cipher.decrypt(chunk.ljust(block_size, '\0'))[:length]
-        else:
-            chunk = cipher.decrypt(chunk)
-        buf.write(chunk)
-    return buf.getvalue()
+def chunk_stream(stream, chunk_lengths):
+    for length in chunk_lengths:
+        chunk = stream.read(length)
 
-def encrypt(cipher, plaintext, block_size=16):
-    buf = StringIO()
-    for chunk in chunks(plaintext, block_size):
-        buf.write(cipher.encrypt(chunk.ljust(block_size, '\0')))
-    return buf.getvalue()
+        if not chunk:
+            break
+
+        yield chunk
+
+def decrypt(cipher, ciphertext):
+    length = len(ciphertext)
+
+    if cipher.mode is not AES.MODE_CTR and length % cipher.block_size != 0:
+        block_size = cipher.block_size
+        ciphertext = ciphertext + ('\0' * (block_size - (length % block_size)))
+
+    return cipher.decrypt(ciphertext)[:length]
+
+def encrypt(cipher, plaintext):
+    length = len(plaintext)
+
+    if cipher.mode is not AES.MODE_CTR and length % cipher.block_size != 0:
+        block_size = cipher.block_size
+        plaintext = plaintext + ('\0' * (block_size - (length % block_size)))
+
+    # Encrypted attributes keep 0 padding
+    return cipher.encrypt(plaintext)
 
 def link_unwrap(notify, args, kwargs):
     """Unwraps the result of a greenlet execution and passes it to notify()."""
@@ -126,7 +138,6 @@ def retry(ExceptionToCheck, tries=3, delay=5, backoff=2, logger=None):
     :type logger: logging.Logger instance
     """
     def deco_retry(f):
-
         @wraps(f)
         def retry_decorator(*args, **kwargs):
             mtries, mdelay = tries, delay

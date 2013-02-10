@@ -1,5 +1,5 @@
 {
     "type": "array",
-    "items": {"type": [{"type": "string"}, {"type": "object"}]},
+    "items": {"type": [{"type": "string"}, {"type": "object"}, {"type": "integer"}]},
     "minItems": 1
 }

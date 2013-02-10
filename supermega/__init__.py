@@ -62,9 +62,8 @@ class Session(object):
         res = req.send(self)
 
         self._maxaction = res['maxaction']
-
         for data in res['files']:
-            meta = models.Meta.for_data(self.keystore, data)
+            meta = models.Meta.for_data(data, self)
             self.datastore.add(meta)
 
     def download(self, func, file, *args, **kwargs):
@@ -74,13 +73,15 @@ class Session(object):
             req = protocol.PublicFileDownloadRequest(handle)
             res = req.send(self)
 
-            file = models.File(res.as_dict(), handle=handle, keystore=self.keystore, cipher_info=cipher_info)
-        else:
-            req = protocol.FileDownloadRequest(file)
-            res = req.send(self)
+            file = models.File.deserialize(res.as_dict(), handle=handle,
+                session=self, cipher_info=cipher_info)
 
-        req = requests.get(res['url'], stream=True)
-        func(file, file.decrypt_from_stream(req.raw), *args, **kwargs)
+            req = self._reqs_session.get(res['url'], stream=True,
+                params={'sid': None, 'ssl': None})
+
+            func(file, file.decrypt_from_stream(req.raw), *args, **kwargs)
+        else:
+            file.download(func, *args, **kwargs)
 
     def download_to_file(self, file, handle = None):
         self.download(self._to_file, file, handle)

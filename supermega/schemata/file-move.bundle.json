@@ -1,0 +1,29 @@
+{
+    "request": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "a": {"type": "string", "pattern": "m", "required": true},
+                "n": {"type": "string", "required": true},
+                "t": {"type": "string", "required": true},
+                "i": {"type": "string", "required": true}
+            }
+        },
+
+        "mapping": {
+            "new_parent": "t",
+            "handle": "n",
+            "request_id": "i"
+        }
+    },
+    "response": {
+        "schema": {
+            "type": "integer",
+            "required": true
+        },
+
+        "mapping": {
+            "*": "errno"
+        }
+    }
+}

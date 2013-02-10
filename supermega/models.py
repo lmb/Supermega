@@ -13,6 +13,7 @@ import datetime
 import json
 import urlparse
 import os
+import os.path
 
 from . import utils
 from . import errors
@@ -57,6 +58,8 @@ class User(object):
             b64encode(challenge + utils.encrypt(cipher_master, challenge))
         )
         res = req.send(self._session)
+
+        print res.as_dict()
 
         req = protocol.EphemeralUserSessionRequest(res['handle'])
         res = req.send(self._session)
@@ -145,7 +148,8 @@ class User(object):
         hash = '\x00' * AES.block_size
         cipher = AES.new(key, mode = AES.MODE_ECB)
 
-        for chunk in chunks(string, AES.block_size):
+        for chunk in utils.chunks(string, AES.block_size):
+            chunk += '\x00' * (AES.block_size - len(chunk))
             hash = strxor(hash, chunk)
 
         for i in range(16384):
@@ -169,10 +173,10 @@ class Datastore(object):
         self.trash = None
 
     def add(self, meta):
-        if meta.parent:
+        if hasattr(meta, 'parent') and meta.parent:
             parent = self._objects[meta.parent]
             parent.children.add(meta)
-        else:
+        elif hasattr(meta, 'type'):
             if meta.type == Meta.TYPE_ROOT:
                 self.root = meta
             elif meta.type == Meta.TYPE_INBOX:
@@ -195,32 +199,45 @@ class Meta(object):
     TYPE_INBOX = 3
     TYPE_TRASH = 4
 
-    # Ignore spurious kwargs so we can pass keystore=? to EncryptedAttributes
-    def __init__(self, data, **kwargs):
-        self.handle = data.get('handle', None) or kwargs['handle']
-        self.created = ('timestamp' in data and
-            datetime.datetime.fromtimestamp(data['timestamp']) or None)
-        self.owner = data.get('owner', None)
-        self.parent = data.get('parent', None)
-        self.type = data.get('type', None)
+    def __init__(self, session):
+        self._session = session
 
     @classmethod
-    def for_data(cls, keystore, data):
+    def deserialize(cls, data, **kwargs):
+        obj = cls(kwargs.pop('session'))
+        obj._deserialize(data, kwargs)
+        return obj
+
+    def _deserialize(self, data, kwargs):
+        self.handle = data.get('handle', None) or kwargs['handle']
+        # TODO: Make this required?
+        self.created = ('timestamp' in data and
+            datetime.datetime.fromtimestamp(data['timestamp']) or None)
+        # TODO: Refactor and make this required?
+        self.owner = data.get('owner', None)
+
+    @classmethod
+    def for_data(cls, data, session):
         try:
             meta_class = cls.TYPES[data['type']]
         except KeyError:
             raise errors.SupermegaException(
                 'Invalid object / file type: {}'.format(data['type']))
 
-        return meta_class(data, keystore=keystore)
+        return meta_class.deserialize(data, session=session)
 
 meta_data_for = utils.registry(Meta, 'TYPES')
 
 @meta_data_for(Meta.TYPE_ROOT, Meta.TYPE_INBOX, Meta.TYPE_TRASH)
 class Container(Meta):
-    def __init__(self, *args, **kwargs):
-        super(Container, self).__init__(*args, **kwargs)
+    """Represents an object that can store other objects as children of
+    itself. In the MEGA storage model these are the special nodes (root, trash,
+    etc.) as well as directories."""
+
+    def _deserialize(self, data, kwargs):
+        super(Container, self)._deserialize(data, kwargs)
         self.children = weakref.WeakSet()
+        self.type = data['type']
 
     def __iter__(self):
         return iter(self.children)
@@ -251,11 +268,18 @@ class Container(Meta):
     def is_container(obj):
         return isinstance(obj, Container)
 
-class EncryptedAttributes(object):
-    def __init__(self, data, **kwargs):
-        super(EncryptedAttributes, self).__init__(data, **kwargs)
+class Containee(object):
+    """Represents an object in the file tree that can be stored in a
+    container, i.e. it has a parent. Currently directories and files are
+    possible."""
 
-        keystore = kwargs['keystore']
+    def _deserialize(self, data, kwargs):
+        super(Containee, self)._deserialize(data, kwargs)
+
+        # TODO: Refactor and make this required
+        self.parent = data.get('parent', None)
+
+        keystore = self._session.keystore
         cipher_info = kwargs.get('cipher_info', None)
 
         if not cipher_info:
@@ -274,14 +298,23 @@ class EncryptedAttributes(object):
         assert(self.key is not None)
 
         ## Decrypt attributes (name as of now)
-        cipher = AES.new(self.key, mode=AES.MODE_CBC, IV='\0'*16)
+        cipher = AES.new(self.key, mode=AES.MODE_CBC, IV='\0'*AES.block_size)
         attrs = decrypt(cipher, b64decode(data['attrs'])).strip('\0')
 
         if not attrs.startswith('MEGA'):
-            raise SupermegaException('File attributes are not in a valid format')
+            print 'File attributes are not in a valid format (file "{}")'.format(self.handle)
+        else:
+            self.raw_attrs = attrs # TODO: Remove me
+            attrs = json.loads(attrs[4:])
+            self.name = attrs['n']
 
-        attrs = json.loads(attrs[4:])
-        self.name = attrs['n']
+    def get_encrypted_attrs(self):
+        attrs = 'MEGA' + json.dumps({'n': self.name})
+        cipher = AES.new(self.key, mode=AES.MODE_CBC, IV='\0'*AES.block_size)
+        return b64encode(utils.encrypt(cipher, attrs))
+
+    def get_serialized_key(self):
+        raise NotImplementedError
 
     def _extract_cipher_spec(self, cipher_info):
         raise NotImplementedError
@@ -293,24 +326,153 @@ class EncryptedAttributes(object):
     __repr__ = __str__
 
 @meta_data_for(Meta.TYPE_DIRECTORY)
-class Directory(EncryptedAttributes, Container):
+class Directory(Containee, Container):
+    @classmethod
+    def create(cls, name, parent):
+        pass
+
+    def get_serialized_key(self):
+        return self.key
+
     def _extract_cipher_spec(self, cipher_info):
         assert(len(cipher_info) == 16)
         self.key = cipher_info
 
 @meta_data_for(Meta.TYPE_FILE)
-class File(EncryptedAttributes, Meta):
-    def __init__(self, data, **kwargs):
-        super(File, self).__init__(data, **kwargs)
-        # TODO: Make this less kludgy by mapping subobjects in requests
+class File(Containee, Meta):
+    type = Meta.TYPE_FILE
+
+    def _deserialize(self, data, kwargs):
+        super(File, self)._deserialize(data, kwargs)
         self.size = data['size']
+
+    @classmethod
+    def from_stream(cls, name, stream, size = None):
+        obj = cls()
+        obj.name = name
+
+        if not size:
+            size = os.fstat(stream).st_size
+
+        obj.size = size
+        obj._stream = stream
+
+    @classmethod
+    def from_disk(cls, path):
+        filename = os.path.basename(path)
+        with open(path, 'rb') as stream:
+            return cls.from_stream(name, stream)
+
+    @classmethod
+    def upload(cls, parent, source, name = None, size = None, key = None, iv = None):
+        chunks = None
+
+        if isinstance(source, File):
+            name = name or source.name
+            size = source.size
+            chunks = source.chunks()
+        else:
+            # Assume that source is a file-like object
+            size = size or os.fstat(source.fileno()).st_size
+            chunks = utils.chunk_stream(source, cls.chunk_lengths())
+
+        assert(name is not "")
+
+        req = protocol.FileUploadRequest(size)
+        base_url = req.send(parent._session)['url'] + '/{}'
+        requests_session = parent._session._reqs_session
+
+        key = key or long_to_bytes(random.getrandbits(128))
+        iv = iv or long_to_bytes(random.getrandbits(64))
+
+        counter = Counter.new(64, prefix=iv, initial_value=0)
+        cipher = AES.new(key, mode=AES.MODE_CTR, counter=counter)
+
+        # TODO: Handle corrupt file source
+
+        file_mac = '\0' * AES.block_size
+        completion_token = ""
+        bytes_read = 0
+
+        for chunk in chunks:
+            chunk_mac = cls.calculate_chunk_mac(key, iv, chunk)
+            chunk = utils.encrypt(cipher, chunk)
+
+            mac_cipher = AES.new(key, mode=AES.MODE_CBC,
+                IV='\0'*AES.block_size)
+            file_mac = strxor(file_mac, chunk_mac)
+            file_mac = utils.encrypt(mac_cipher, file_mac)
+
+            url = base_url.format(bytes_read)
+            res = requests_session.post(url, data=chunk,
+                params={'sid': None, 'ssl': None})
+
+            bytes_read += len(chunk)
+
+            if res.content == "":
+                # This chunk upload was sucessful
+                continue
+
+            try:
+                raise errors.ServiceError.for_errno(int(res.content))
+            except ValueError:
+                # This is the last chunk
+                completion_token = res.content
+
+        if completion_token:
+            # Finalize MAC
+            file_mac = (strxor(file_mac[:4], file_mac[4:8]) +
+                        strxor(file_mac[8:12], file_mac[12:]))
+
+            print "completion token is " + completion_token
+            new_file = cls(parent._session)
+            new_file.name = name
+            new_file.size = size
+            new_file.iv = iv
+            new_file.mac = file_mac
+            new_file.key = key
+
+            req = protocol.FileAddRequest(parent, new_file, completion_token)
+            res = req.send(parent._session)
+
+            assert(len(res['files']) == 1)
+
+            for data in res['files']:
+                # TODO Make this work for multiple files?
+                f = Meta.for_data(data, parent._session)
+                parent._session.datastore.add(f)
+                return f
+
+    def chunks(self):
+        req = protocol.FileDownloadRequest(self)
+        res = req.send(self._session)
+
+        req = self._session._reqs_session.get(res['url'], stream=True,
+            params={'sid': None, 'ssl': None})
+        return self.decrypt_from_stream(req.raw)
+
+    def download(self, func, *args, **kwargs):
+        func(self, self.chunks(), *args, **kwargs)
+
+    def move_to(self, new_parent):
+        if not isinstance(new_parent, Container):
+            raise TypeError('The new parent has to be a container')
+
+        req = protocol.FileMoveRequest(self, new_parent)
+        res = req.send(self._session)
+        assert(res['errno'] == 0)
+
+    def delete(self):
+        req = protocol.FileDeleteRequest(self)
+        res = req.send(self._session)
+        assert(res['errno'] == 0)
 
     def _extract_cipher_spec(self, cipher_info):
         # 128bit key XORed with trailing 128bit,
         # followed by upper 64bit of CTR mode IV,
         # again followed by 64bit MAC
         # Thanks http://julien-marchand.fr/blog/using-mega-api-with-python-examples/
-        self.key = strxor(cipher_info[0:16], cipher_info[16:])
+        self.key = strxor(cipher_info[0:16], cipher_info[16:32])
         self.iv = cipher_info[16:24]
         self.mac = cipher_info[24:]
 
@@ -324,34 +486,11 @@ class File(EncryptedAttributes, Meta):
         bytes_read = 0
         file_mac = '\0' * 16
 
-        for chunk_len in self.chunk_lengths():
-            chunk = stream.read(chunk_len)
+        for chunk in utils.chunk_stream(stream, self.chunk_lengths()):
             bytes_read += len(chunk)
 
-            if not chunk:
-                if bytes_read != self.size:
-                    raise errors.SupermegaException(
-                        "Corrupt download: file is too short")
-                
-                file_mac = (strxor(file_mac[:4], file_mac[4:8]) +
-                    strxor(file_mac[8:12], file_mac[12:]))
-
-                # TODO: Should we use a constant time compare?
-                if file_mac != self.mac:
-                    raise errors.SupermegaException(
-                        "Corrupt download: invalid hash")
-
-                break
-
             chunk = utils.decrypt(cipher, chunk)
-
-            chunk_mac = self.iv + self.iv
-            for block in utils.chunks(chunk, AES.block_size):
-                # TODO: Isn't this really ECB?
-                mac_cipher = AES.new(self.key, mode=AES.MODE_CBC, IV='\0'*16)
-
-                chunk_mac = strxor(chunk_mac, block.ljust(AES.block_size, '\0'))
-                chunk_mac = utils.encrypt(mac_cipher, chunk_mac)
+            chunk_mac = self.calculate_chunk_mac(self.key, self.iv, chunk)
 
             # See above
             mac_cipher = AES.new(self.key, mode=AES.MODE_CBC, IV='\0'*16)
@@ -359,6 +498,38 @@ class File(EncryptedAttributes, Meta):
             file_mac = utils.encrypt(mac_cipher, file_mac)
 
             yield chunk
+
+        if bytes_read != self.size:
+            raise errors.CorruptFile(
+                "Corrupt download: file is too short")
+                
+        file_mac = (strxor(file_mac[:4], file_mac[4:8]) +
+            strxor(file_mac[8:12], file_mac[12:]))
+
+        # TODO: Should we use a constant time compare?
+        if file_mac != self.mac:
+            raise errors.CorruptFile(
+                "Corrupt download: invalid hash")
+
+    def get_serialized_key(self):
+        cipher = AES.new(self._session.user.master_key, mode=AES.MODE_ECB)
+        key = strxor(self.key, self.iv + self.mac)
+        ciphertext = utils.encrypt(cipher, key + self.iv + self.mac)
+        assert(len(ciphertext) == 32)
+        return b64encode(ciphertext)
+
+    @staticmethod
+    def calculate_chunk_mac(key, iv, chunk):
+        chunk_mac = iv * 2
+        for block in utils.chunks(chunk, AES.block_size):
+            # TODO: Isn't this really ECB?
+            # TODO: This might require padding
+            mac_cipher = AES.new(key, mode=AES.MODE_CBC, IV='\0'*16)
+
+            chunk_mac = strxor(chunk_mac, block.ljust(AES.block_size, '\0'))
+            chunk_mac = utils.encrypt(mac_cipher, chunk_mac)
+
+        return chunk_mac
 
     @staticmethod
     def parse_download_url(url):

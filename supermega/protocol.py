@@ -41,7 +41,6 @@ class Request(Operation):
         data = self._bundle.translate(self._data)
         data[Operation.OPCODE_KEY] = self.opcode
         self._bundle.schema.validate(data)
-
         return data
 
     def __setitem__(self, attr, value):
@@ -93,7 +92,7 @@ class Transaction(list):
         # The server seems to return either -errno or [-errno]
         if isinstance(data, (int, long)):
             raise errors.ServiceError.for_errno(data)
-        if len(data) == 1 and isinstance(data[0], (int, long)):
+        if len(data) == 1 and isinstance(data[0], (int, long)) and data[0] < 0:
             # TODO: This only catches the first error in a complete transaction
             raise errors.ServiceError.for_errno(data[0])
 
@@ -179,10 +178,10 @@ class FilesResponse(Response):
 
 ##############
 class FileDownloadRequest(Request):
-    def __init__(self, file_meta):
+    def __init__(self, file):
         self.read_schema('file-download.bundle.json')
 
-        self['handle'] = file_meta.handle
+        self['handle'] = file.handle
         self['g'] = 1 # TODO: What does this mean?
 
 @is_response_to(FileDownloadRequest)
@@ -202,6 +201,60 @@ class PublicFileDownloadRequest(Request):
 class FileDownloadReponse(Response):
     def __init__(self):
         self.read_schema('file-download-public.bundle.json')
+
+##############
+class FileUploadRequest(Request):
+    def __init__(self, size):
+        self.read_schema('file-upload.bundle.json')
+        self['size'] = size
+
+@is_response_to(FileUploadRequest)
+class FileUploadResponse(Response):
+    def __init__(self):
+        self.read_schema('file-upload.bundle.json')
+
+##############
+class FileAddRequest(Request):
+    def __init__(self, parent, new_file, completion_token):
+        self.read_schema('file-add.bundle.json')
+
+        self['parent'] = parent.handle
+        self['files'] = [{
+            'completion_token': completion_token,
+            'type': new_file.type,
+            'attrs': new_file.get_encrypted_attrs(),
+            'key': new_file.get_serialized_key()
+        }]
+
+@is_response_to(FileAddRequest)
+class FileAddResponse(Response):
+    def __init__(self):
+        self.read_schema('file-add.bundle.json')
+
+##############
+class FileMoveRequest(Request):
+    def __init__(self, fileobj, new_parent):
+        self.read_schema('file-move.bundle.json')
+        self['new_parent'] = new_parent.handle
+        self['handle'] = fileobj.handle
+        self['request_id'] = ''
+
+@is_response_to(FileMoveRequest)
+class FileMoveResponse(Response):
+    def __init__(self):
+        self.read_schema('file-move.bundle.json')
+
+##############
+class FileDeleteRequest(Request):
+    def __init__(self, file):
+        self.read_schema('file-delete.bundle.json')
+        self['handle'] = file.handle
+        self['request_id'] = ''
+
+@is_response_to(FileDeleteRequest)
+class FileDeleteResponse(Response):
+    def __init__(self):
+        self.read_schema('file-delete.bundle.json')
 
 ##############
 class ServerResponse(Response):
