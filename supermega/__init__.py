@@ -511,8 +511,8 @@ class File(Containee, Meta):
         base_url = req.send(parent._session)['url'] + '/{}'
         requests_session = parent._session._reqs_session
 
-        key = key or long_to_bytes(random.getrandbits(128))
-        iv = iv or long_to_bytes(random.getrandbits(64))
+        key = long_to_bytes(random.getrandbits(128))
+        iv = long_to_bytes(random.getrandbits(64))
 
         counter = Counter.new(64, prefix=iv, initial_value=0)
         cipher = AES.new(key, mode=AES.MODE_CTR, counter=counter)
