@@ -1,42 +1,14 @@
 {
-    "type": "object",
+	"type": "object",
+    "required": true,
     "properties": {
-        "response": {
+        "schema": {
             "type": "object",
-            "required": true,
-            "properties": {
-                "schema": {
-                    "type": "object",
-                    "required": true
-                },
-                "mapping": {
-                    "type": [{"type": "object"}, {"type": "string"}],
-                    "required": true
-                }
-            }
+            "required": true
         },
-        "request": {
-            "extends": { "$ref": "#properties/response" },
-            "properties": {
-                "schema": {
-                    "properties": {
-                        "properties": {
-                            "type": "object",
-                            "required": true,
-                            "properties": {
-                                "a": {
-                                    "type": "object",
-                                    "required": true,
-                                    "properties": {
-                                        "type": { "required": true, "pattern": "string" },
-                                        "pattern": { "required": true, "type": "string" }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        "mapping": {
+            "type": "object",
+            "required": true
         }
     }
 }

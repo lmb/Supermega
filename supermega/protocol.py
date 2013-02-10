@@ -1,5 +1,6 @@
 import os.path
 import json
+import copy
 from itertools import izip, ifilter
 from requests.exceptions import Timeout
 
@@ -17,10 +18,7 @@ class Operation(object):
     _data = {}
 
     def read_schema(self, part, schema):
-        self._schema, self._mapping = schemata.load_bundle(schema, part)
-
-    def is_mapped_attr(self, attr):
-        return attr in self._mapping
+        self._bundle = schemata.SchemaBundle.from_file(schema, part)
 
     def get(self, *args, **kwargs):
         return self._data.get(*args, **kwargs)
@@ -36,26 +34,18 @@ class Request(Operation):
 
     def read_schema(self, *args, **kwargs):
         super(Request, self).read_schema('request', *args, **kwargs)
-        self.opcode = (self._schema.definition['properties']
+        self.opcode = (self._bundle.schema.definition['properties']
             [Operation.OPCODE_KEY]['pattern'])
 
-    def validate_attr(self, attr, value):
-        mapped = self._mapping[attr] and (self._mapping[attr],) or ()
-        self._schema.validate(value, mapped)
-
     def as_serializable_dict(self):
-        data = { self._mapping[attr]: self._data[attr] for attr in \
-            ifilter(self._data.__contains__, self._mapping.iterkeys()) }
+        data = self._bundle.translate(self._data)
         data[Operation.OPCODE_KEY] = self.opcode
+        self._bundle.schema.validate(data)
 
-        self._schema.validate(data)
         return data
 
     def __setitem__(self, attr, value):
-        # TODO: Possibly restrict setting to mapped values
-        if self.is_mapped_attr(attr):
-            self.validate_attr(attr, value)
-
+        self._bundle.validate(value, (attr,))
         self._data[attr] = value
 
     def send(self, session):
@@ -67,42 +57,15 @@ class Response(Operation):
 
     def load(self, request, data):
         self.request = request
-        self._schema.validate(data)
-        self._load(self._data, data, self._mapping)
-
-    def _load(self, container, data, mapping):
-        for attr_to, attr_from in mapping.iteritems():
-            if not attr_from:
-                # Take data verbatim
-                container[attr_to] = data
-
-            elif isinstance(attr_from, (list, tuple)):
-                # Map nested attributes
-                mapping = attr_from[1]
-                attr_from = attr_from[0]
-
-                if isinstance(data[attr_from], list):
-                    # Map a list of objects
-                    container[attr_to] = []
-                    for entry in data[attr_from]:
-                        mapped_entry = {}
-                        self._load(mapped_entry, entry, mapping)
-                        container[attr_to].append(mapped_entry)
-                else:
-                    # Map an object
-                    container[attr_to] = {}
-                    self._load(container[attr_to], data[attr_from], mapping)
-
-            elif attr_from in data:
-                # Map a -> b
-                container[attr_to] = data[attr_from]
+        self._bundle.schema.validate(data)
+        self._data = self._bundle.translate(data)
 
     def read_schema(self, *args, **kwargs):
         super(Response, self).read_schema('response', *args, **kwargs)
 
     def as_dict(self):
-        """Returns all response data that has been mapped."""
-        return { key: self._data[key] for key in self._mapping.iterkeys() }
+        """Returns all response data."""
+        return copy.deepcopy(self._data)
 
 def is_response_to(request_class):
     def decorate(response_class):
@@ -124,7 +87,7 @@ class Transaction(list):
     def serialize(self):
         return json.dumps(self, cls=self.Encoder)
 
-    def unserialize(self, request, data):
+    def deserialize(self, request, data):
         data = json.loads(data)
 
         # The server seems to return either -errno or [-errno]
@@ -149,7 +112,7 @@ class Transaction(list):
     def _send(self, request):
         data = request.send().content
         response = self.__class__()
-        response.unserialize(self, data)
+        response.deserialize(self, data)
         return response
 
     # def send(self, session, notify, *args, **kwargs):

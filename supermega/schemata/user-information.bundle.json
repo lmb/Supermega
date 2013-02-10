@@ -25,7 +25,7 @@
     },
 
     "mapping": {
-        "public_key": "pubk",
-        "userhandle": "u"
+        "pubk": "public_key",
+        "u": "userhandle"
     }
 }}

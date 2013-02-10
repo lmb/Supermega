@@ -22,8 +22,8 @@
         },
 
         "mapping": {
-            "session_id": "tsid",
-            "master_key": "k"
+            "tsid": "session_id",
+            "k": "master_key"
         }
     }
 }

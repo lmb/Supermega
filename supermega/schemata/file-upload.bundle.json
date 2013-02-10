@@ -1,0 +1,33 @@
+{
+    "request": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "a": {"type": "string", "pattern": "u", "required": true},
+                "ms": {"type": "integer"},
+                "s": {"type": "integer", "required": true},
+                "r": {"type": "integer"},
+                "e": {"type": "integer"}
+            }
+        },
+
+        "mapping": {
+            "max_speed": "ms",
+            "size": "s",
+            "retries": "r",
+            "last_error": "e"
+        }
+    },
+    "response": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "p": {"type": "string", "required": true}
+            }
+        },
+
+        "mapping": {
+            "p": "url"
+        }
+    }
+}

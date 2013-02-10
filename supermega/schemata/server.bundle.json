@@ -16,9 +16,9 @@
         },
 
         "mapping": {
-            "opcode": "a",
-            "maxaction": "sn",
-            "wait_url": "w"
+            "a": "opcode",
+            "sn": "maxaction",
+            "w": "wait_url"
         }
     }
 }

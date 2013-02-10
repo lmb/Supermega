@@ -7,17 +7,20 @@ from .. import errors
 class TestRequest(unittest.TestCase):
     def setUp(self):
         self.req = protocol.Request()
-        self.req._schema = schemata.Schema('check-pattern', {
-            'type': 'object', 'properties': {
-                'test': {
-                    'type': 'string',
-                    'required': True,
-                    'pattern': 'has to match this'
-                }
+        self.req._bundle = schemata.SchemaBundle('check-pattern', {
+                'schema': {
+                    'type': 'object', 'properties': {
+                        'test': {
+                            'type': 'string',
+                            'required': True,
+                            'pattern': 'has to match this'
+                        }
+                    }
+                },
+                'mapping': {'test': 'test'}
             }
-        })
+        )
 
-        self.req._mapping = {'test': 'test'}
         self.req.opcode = ''
 
     def test_assing_invalid_value(self):
@@ -45,15 +48,17 @@ class TestResponse(unittest.TestCase):
         self.res = protocol.Response()
 
         # This basically allows all data, provided the root object is a dict
-        self.res._schema = schemata.Schema('allow-any', {'type': 'object'})
-
-        self.res._mapping = {
-            'to': 'from',
-            'to_nested': ('from_nested', {
-                'a': '1',
-                'b': '2'
-            })
-        }
+        self.res._bundle = schemata.SchemaBundle('allow-any', {
+                'schema': {'type': 'object'},
+                'mapping': {
+                    'from': 'to',
+                    'from_nested': ['to_nested', {
+                        '1': 'a',
+                        '2': 'b'
+                    }]
+                }
+            }
+        )
 
     def test_mapping(self):
         self.res.load(None, {
@@ -68,8 +73,6 @@ class TestResponse(unittest.TestCase):
         self.assertTrue(isinstance(self.res['to_nested'], dict))
         self.assertEqual(self.res['to_nested']['a'], 'first value')
         self.assertEqual(self.res['to_nested']['b'], 'second value')
-
-        self.assertEqual(self.res.as_dict().keys(), self.res._mapping.keys())
 
 if __name__ == '__main__':
     unittest.main()

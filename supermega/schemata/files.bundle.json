@@ -16,22 +16,38 @@
     "schema": {
         "type": "object",
         "properties": {
-            "f": {"type": "array", "required": true, "items": {"type": "object"}},
+            "f": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "h": {"type": "string", "required": true},
+                        "t": {"type": "integer", "required": true},
+                        "ts": {"type": "integer", "required": true},
+                        "a": {"type": "string", "required": true},
+                        "k": {"type": "string", "required": true},
+                        "p": {"type": "string", "required": true},
+                        "u": {"type": "string", "required": true},
+                        "s": {"type": "integer", "required": false}
+                    }
+                },
+                "required": true
+            },
             "sn": {"type": "string", "required": true}
         }
     },
 
     "mapping": {
-        "files": ["f", {
-            "handle": "h",
-            "timestamp": "ts",
-            "owner": "u",
-            "parent": "p",
-            "type": "t",
-            "keys": "k",
-            "attrs": "a",
-            "size": "s"
+        "f": ["files", {
+            "h": "handle",
+            "ts": "timestamp",
+            "u": "owner",
+            "p": "parent",
+            "t": "type",
+            "k": "keys",
+            "a": "attrs",
+            "s": "size"
         }],
-        "maxaction": "sn"
+        "sn": "maxaction"
     }
 }}
