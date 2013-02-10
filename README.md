@@ -23,20 +23,15 @@ Examples
 --------
 
 _Neat stuff:_
-y
+
 ```python
 import supermega
 
-s1 = supermega.Session()
-s1.login('user1@example.org', 'pass1')
-s1.init_datastore()
+s1 = supermega.Session('user1@example.org', 'pass1')
+s2 = supermega.Session('user2@example.org', 'pass2')
 
-s2 = supermega.Session()
-s2.login('user2@example.org', 'pass2')
-s2.init_datastore()
-
-source_file = s2.datastore['FILE_ID'] # Try iterating s2.datastore.root.walk()
-new_file_on_s1 = supermega.File.upload(s1.datastore.root, source_file)
+source_file = s2.datastore['FILE_ID'] # Try iterating s2.root.walk()
+new_file_on_s1 = supermega.File.upload(s1.root, source_file)
 ```
 
 Source file from account 2 is now on account 1 (this of course involves downloading the file from account 2 first).
@@ -51,8 +46,7 @@ def to_disk(file, chunks):
         for chunk in chunks:
             f.write(chunk)
 
-s = supermega.Session()
-s.login('user@example.org', 'password')
+s = supermega.Session('user@example.org', 'password')
 s.download(to_disk, 'https://mega.co.nz/#!FILE_URL')
 ```
 
@@ -62,7 +56,7 @@ _Download a file into the current working directory:_
 import supermega
 
 s = supermega.Session()
-s.download_to_file('PUBLIC_URL')
+s.download_to_file('https://mega.co.nz/#!FILE_URL') # also works with supermega.File objects
 ```
 
 _Download a file into an arbitrary file-like object:_
@@ -71,7 +65,7 @@ import supermega
 
 s = supermega.Session()
 with open('FILENAME', 'wb') as f:
-    s.download_to_file('PUBLIC_URL', f)
+    s.download_to_file('https://mega.co.nz/#!FILE_URL', f)
 ```
 
 _List files:_
@@ -79,11 +73,9 @@ _List files:_
 ```python
 import supermega
 
-s = supermega.Session()
-s.login('user@example.org', 'password')
+s = supermega.Session('user@example.org', 'password')
 
-s.init_datastore()
-for parent, subdirs, files in s.datastore.root.walk():
+for parent, subdirs, files in s.root.walk():
     print "-----------------------"
     print "For: {}".format(parent)
     print "Subdirs:"
@@ -94,6 +86,8 @@ for parent, subdirs, files in s.datastore.root.walk():
     print "Files:"
     for f in files:
         print f
+
+    print
 ```
 
 You can use the file objects as arguments to the Session.download* functions, although this only makes sense if you're logged in.
@@ -106,14 +100,14 @@ Should be as easy as doing a `pip install git+git://github.com/lmb/Supermega.git
 How is it organized?
 --------------------
 
-* supermega.models: handles crypto stuff
 * supermega.errors: exceptions
 * supermega.protocol: defines the JSON requests / responses MEGA expects and has a somewhat decent interface to run them
-* supermega.transport: some low level stuff that actually dispatches requests to the servers.
+* supermega.transport: some low level stuff that actually dispatches requests to the servers
 * supermega.utils: stuff that probably should be somewhere else
 
 Interesting stuff
 -----------------
+
 Julien Marchand has some blog posts up that explain the MEGA API in more detail:
 
 1. [Basic API](http://julien-marchand.fr/blog/using-mega-api-with-python-examples/)

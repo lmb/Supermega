@@ -30,7 +30,7 @@ from . import protocol
 __all__ = [ 'Session', 'File', 'User' ]
 
 class Session(object):
-    def __init__(self):
+    def __init__(self, username = None, password = None):
         self.sequence = itertools.count(0)
         self.keystore = models.Keystore()
         self.datastore = models.Datastore()
@@ -40,6 +40,9 @@ class Session(object):
         self._reqs_session = requests.Session()
         self._reqs_session.stream = True
         self._reqs_session.params['ssl'] = 1
+
+        if username:
+            self.login(username, password)
 
     def _maxaction():
         doc = "The _maxaction property."
@@ -57,6 +60,24 @@ class Session(object):
 
         return locals()
     _maxaction = property(**_maxaction())
+
+    @property
+    def root(self):
+        if self.datastore.root is None:
+            self.init_datastore()
+        return self.datastore.root
+
+    @property
+    def trash(self):
+        if self.datastore.trash is None:
+            self.init_datastore()
+        return self.datastore.trash
+
+    @property
+    def inbox(self):
+        if self.datastore.inbox is None:
+            self.init_datastore()
+        return self.datastore.inbox
 
     def __str__(self):
         if not self.user:
