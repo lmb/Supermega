@@ -264,23 +264,20 @@ class User(object):
         key = '\x93\xC4\x67\xE3\x7D\xB0\xC7\xA4\xD1\xBE\x3F\x81\x01\x52\xCB\x56'
 
         for r in xrange(65536):
-            for chunk in utils.chunks(string, AES.block_size):
-                chunk += '\x00' * (AES.block_size - len(chunk))
+            for chunk in utils.chunks(string, AES.block_size, AES.block_size):
                 cipher = AES.new(chunk, mode = AES.MODE_ECB)
-
                 key = cipher.encrypt(key)
 
         return key
 
     @staticmethod
     def hash_with_key(string, key):
-        hash = '\x00' * AES.block_size
-        cipher = AES.new(key, mode = AES.MODE_ECB)
-
-        for chunk in utils.chunks(string, AES.block_size):
-            chunk += '\x00' * (AES.block_size - len(chunk))
+        hash = '\0' * AES.block_size
+        
+        for chunk in utils.chunks(string, AES.block_size, AES.block_size):
             hash = strxor(hash, chunk)
 
+        cipher = AES.new(key, mode = AES.MODE_ECB)
         for i in range(16384):
             hash = cipher.encrypt(hash)
 
@@ -471,7 +468,8 @@ class Containee(object):
         attrs = utils.decrypt(cipher, b64decode(data['attrs'])).strip('\0')
 
         if not attrs.startswith('MEGA'):
-            print 'File attributes are not in a valid format (file "{}")'.format(self.handle)
+            print ('File attributes are not in a valid format ' +
+                '(file "{}")'.format(self.handle))
         else:
             self.raw_attrs = attrs # TODO: Remove me
             attrs = json.loads(attrs[4:])
@@ -534,8 +532,6 @@ class File(Containee, Meta):
 
     @classmethod
     def upload(cls, parent, source, name = None, size = None):
-        chunks = None
-
         if isinstance(source, File):
             name = name or source.name
             size = source.size
@@ -557,48 +553,41 @@ class File(Containee, Meta):
         counter = Counter.new(64, prefix=iv, initial_value=0)
         cipher = AES.new(key, mode=AES.MODE_CTR, counter=counter)
 
-        # TODO: Handle corrupt file source
-
-        file_mac = '\0' * AES.block_size
-        completion_token = ""
         bytes_read = 0
+        chunk_number = 0
+        file_mac = utils.MetaMAC(key, iv)
 
-        for chunk in chunks:
-            chunk_mac = cls.calculate_chunk_mac(key, iv, chunk)
-            chunk = utils.encrypt(cipher, chunk)
+        try:
+            for chunk in chunks:
+                file_mac.update(chunk_number, chunk)
+                chunk = utils.encrypt(cipher, chunk)
 
-            mac_cipher = AES.new(key, mode=AES.MODE_CBC,
-                IV='\0'*AES.block_size)
-            file_mac = strxor(file_mac, chunk_mac)
-            file_mac = utils.encrypt(mac_cipher, file_mac)
+                url = base_url.format(bytes_read)
+                res = requests_session.post(url, data=chunk,
+                    params={'sid': None, 'ssl': None})
 
-            url = base_url.format(bytes_read)
-            res = requests_session.post(url, data=chunk,
-                params={'sid': None, 'ssl': None})
+                bytes_read += len(chunk)
+                chunk_number += 1
 
-            bytes_read += len(chunk)
+                if res.content == "":
+                    # This chunk upload was sucessful
+                    continue
 
-            if res.content == "":
-                # This chunk upload was sucessful
-                continue
-
-            try:
-                raise errors.ServiceError.for_errno(int(res.content))
-            except ValueError:
-                # This is the last chunk
-                completion_token = res.content
+                try:
+                    raise errors.ServiceError.for_errno(int(res.content))
+                except ValueError:
+                    # This is the last chunk
+                    completion_token = res.content
+        except errors.CorruptFile:
+            # This only happens when a supermega.File is the source
+            raise errors.UploadFailed('The source file is corrupted')
 
         if completion_token:
-            # Finalize MAC
-            file_mac = (strxor(file_mac[:4], file_mac[4:8]) +
-                        strxor(file_mac[8:12], file_mac[12:]))
-
-            print "completion token is " + completion_token
             new_file = cls(parent._session)
             new_file.name = name
             new_file.size = size
             new_file.iv = iv
-            new_file.mac = file_mac
+            new_file.mac = file_mac.digest()
             new_file.key = key
 
             req = protocol.FileAddRequest(parent, new_file, completion_token)
@@ -653,30 +642,24 @@ class File(Containee, Meta):
         cipher = AES.new(self.key, mode=AES.MODE_CTR, counter=counter)
 
         bytes_read = 0
-        file_mac = '\0' * 16
+        chunk_number = 0
+        file_mac = utils.MetaMAC(self.key, self.iv)
 
         for chunk in utils.chunk_stream(stream, self.chunk_lengths()):
-            bytes_read += len(chunk)
-
             chunk = utils.decrypt(cipher, chunk)
-            chunk_mac = self.calculate_chunk_mac(self.key, self.iv, chunk)
-
-            # See above
-            mac_cipher = AES.new(self.key, mode=AES.MODE_CBC, IV='\0'*16)
-            file_mac = strxor(file_mac, chunk_mac)
-            file_mac = utils.encrypt(mac_cipher, file_mac)
+            file_mac.update(chunk_number, chunk)
 
             yield chunk
+
+            bytes_read += len(chunk)
+            chunk_number += 1
 
         if bytes_read != self.size:
             raise errors.CorruptFile(
                 "Corrupt download: file is too short")
-                
-        file_mac = (strxor(file_mac[:4], file_mac[4:8]) +
-            strxor(file_mac[8:12], file_mac[12:]))
 
         # TODO: Should we use a constant time compare?
-        if file_mac != self.mac:
+        if file_mac.digest() != self.mac:
             raise errors.CorruptFile(
                 "Corrupt download: invalid hash")
 
@@ -686,19 +669,6 @@ class File(Containee, Meta):
         ciphertext = utils.encrypt(cipher, key + self.iv + self.mac)
         assert(len(ciphertext) == 32)
         return b64encode(ciphertext)
-
-    @staticmethod
-    def calculate_chunk_mac(key, iv, chunk):
-        chunk_mac = iv * 2
-        for block in utils.chunks(chunk, AES.block_size):
-            # TODO: Isn't this really ECB?
-            # TODO: This might require padding
-            mac_cipher = AES.new(key, mode=AES.MODE_CBC, IV='\0'*16)
-
-            chunk_mac = strxor(chunk_mac, block.ljust(AES.block_size, '\0'))
-            chunk_mac = utils.encrypt(mac_cipher, chunk_mac)
-
-        return chunk_mac
 
     @staticmethod
     def parse_download_url(url):

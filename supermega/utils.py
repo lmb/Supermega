@@ -5,6 +5,7 @@ from cStringIO import StringIO
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES
 from Crypto.Util.number import bytes_to_long
+from Crypto.Util.strxor import strxor
 from collections import namedtuple
 
 B64_ALT_CHARS = '-_'
@@ -19,9 +20,9 @@ def b64decode(s):
     padding = '=' * (4 - (len(s) % 4))
     return base64.b64decode(s + padding, B64_ALT_CHARS)
 
-def chunks(s, n):
+def chunks(s, n, padding = 0):
     for i in xrange(0, len(s), n):
-        yield s[i:i+n]
+        yield s[i:i+n].ljust(padding, '\0')
 
 def chunk_stream(stream, chunk_lengths):
     for length in chunk_lengths:
@@ -81,6 +82,47 @@ def rsa_decrypt_with_partial(c, key):
 
     c = bytes_to_long(c)
     return partial.key._decrypt(c)
+
+def cbc_mac(key, plaintext, IV = None):
+    IV = IV or '\0' * AES.block_size
+
+    cipher = AES.new(key, AES.MODE_CBC, IV=IV)
+    for block in chunks(plaintext, AES.block_size, AES.block_size):
+        mac = cipher.encrypt(block)
+
+    return mac
+
+# As per http://stackoverflow.com/questions/1857780/sparse-assignment-list-in-python
+class SparseList(list):
+  def __setitem__(self, index, value):
+    missing = index - len(self) + 1
+    if missing > 0:
+      self.extend([None] * missing)
+    list.__setitem__(self, index, value)
+  def __getitem__(self, index):
+    try: return list.__getitem__(self, index)
+    except IndexError: return None
+
+class MetaMAC(object):
+    def __init__(self, key, iv):
+        self.key = key
+        # IV is used for CTR mode en/decrypion and is only 64 bits as a result
+        # MEGA just takes it twice for CBC-MAC operation
+        self.iv = iv * 2
+        self.macs = SparseList()
+
+    def update(self, chunk_index, chunk):
+        if self.macs[chunk_index] is not None:
+            raise KeyError('Chunk MACs should not be set multiple times')
+        self.macs[chunk_index] = cbc_mac(self.key, chunk, IV=self.iv)
+
+    def digest(self):
+        try:
+            mac = cbc_mac(self.key, ''.join(self.macs)) # Zero IV
+        except TypeError:
+            raise ValueError('Not all chunk MACs have been submitted')
+
+        return strxor(mac[:4], mac[4:8]) + strxor(mac[8:12], mac[12:])
 
 def registry(registry_class, attr):
     if not hasattr(registry_class, attr):
