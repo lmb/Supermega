@@ -24,7 +24,8 @@ def verify_hash(file, chunks, obj, sha256):
 		hash.update(chunk)
 	obj.assertEqual(hash.hexdigest(), sha256)
 
-requires_account = unittest.skipUnless(USERNAME and PASSWORD, "MEGA_USERNAME or MEGA_PASSWORD missing")
+requires_account = unittest.skipUnless(USERNAME and PASSWORD,
+	"MEGA_USERNAME or MEGA_PASSWORD missing")
 
 class TestSession(unittest.TestCase):
 	def setUp(self):
@@ -46,6 +47,10 @@ class TestSession(unittest.TestCase):
 
 	def test_key_derivation(self):
 		self.assertEqual(User.derive_key("password"), 'd\x039r^n\xbd\x13\xa2_\x00R\x12\x9f|\xb1')
+
+	@requires_account
+	def test_create_from_env(self):
+		s = Session.from_env()
 
 	@requires_account
 	def test_print_tree(self):

@@ -43,6 +43,10 @@ class Session(object):
         if username:
             self.login(username, password)
 
+    @classmethod
+    def from_env(cls):
+        return cls(os.environ['MEGA_USERNAME'], os.environ['MEGA_PASSWORD'])
+
     def _maxaction():
         doc = "The _maxaction property."
         def fget(self):
