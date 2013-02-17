@@ -10,7 +10,7 @@
     },
 
     "mapping": {
-        "g": "g",
+        "include_url": "g",
         "handle": "p"
     }
 },
@@ -18,7 +18,7 @@
     "schema": {
         "type": "object",
         "properties": {
-            "g": {"type": "string", "required": true},
+            "g": {"type": "string", "required": false},
             "s": {"type": "integer", "required": true},
             "at": {"type": "string", "required": true}
         }

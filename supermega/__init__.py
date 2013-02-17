@@ -105,22 +105,11 @@ class Session(object):
             meta = Meta.for_data(data, self)
             self.datastore.add(meta)
 
-    def download(self, func, file, *args, **kwargs):
-        if isinstance(file, basestring):
-            (handle, cipher_info) = File.parse_download_url(file)
-
-            req = protocol.PublicFileDownloadRequest(handle)
-            res = req.send(self)
-
-            file = File.deserialize(res.as_dict(), handle=handle,
-                session=self, cipher_info=cipher_info)
-
-            req = self._reqs_session.get(res['url'], stream=True,
-                params={'sid': None, 'ssl': None})
-
-            func(file, file.decrypt_from_stream(req.raw), *args, **kwargs)
-        else:
-            file.download(func, *args, **kwargs)
+    def download(self, func, fileobj, *args, **kwargs):
+        if isinstance(fileobj, basestring):
+            fileobj = File.from_url(self, fileobj)
+        
+        fileobj.download(func, *args, **kwargs)
 
     def download_to_file(self, file, handle = None):
         self.download(self._to_file, file, handle)
@@ -191,8 +180,6 @@ class User(object):
             b64encode(challenge + utils.encrypt(cipher_master, challenge))
         )
         res = req.send(self._session)
-
-        print res.as_dict()
 
         req = protocol.EphemeralUserSessionRequest(res['handle'])
         res = req.send(self._session)
@@ -518,23 +505,17 @@ class File(Containee, Meta):
     def _deserialize(self, data, kwargs):
         super(File, self)._deserialize(data, kwargs)
         self.size = data['size']
+        self.is_public_file = kwargs.get('is_public_file', False)
 
     @classmethod
-    def from_stream(cls, name, stream, size = None):
-        obj = cls()
-        obj.name = name
+    def from_url(cls, session, url):
+        (handle, cipher_info) = cls.parse_download_url(url)
 
-        if not size:
-            size = os.fstat(stream).st_size
+        req = protocol.PublicFileGetInfoRequest(handle, False)
+        res = req.send(session)
 
-        obj.size = size
-        obj._stream = stream
-
-    @classmethod
-    def from_disk(cls, path):
-        filename = os.path.basename(path)
-        with open(path, 'rb') as stream:
-            return cls.from_stream(name, stream)
+        return cls.deserialize(res.as_dict(), handle=handle, session=session,
+            cipher_info=cipher_info, is_public_file=True)
 
     @classmethod
     def upload(cls, parent, source, name = None, size = None):
@@ -608,7 +589,10 @@ class File(Containee, Meta):
                 return f
 
     def chunks(self):
-        req = protocol.FileDownloadRequest(self)
+        if self.is_public_file:
+            req = protocol.PublicFileGetInfoRequest(self.handle)
+        else:
+            req = protocol.FileGetInfoRequest(self.handle)
         res = req.send(self._session)
 
         req = self._session._reqs_session.get(res['url'], stream=True,

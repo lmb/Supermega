@@ -178,30 +178,30 @@ class FilesResponse(Response):
         self.read_schema('files.bundle.json')
 
 ##############
-class FileDownloadRequest(Request):
-    def __init__(self, file):
-        self.read_schema('file-download.bundle.json')
-
-        self['handle'] = file.handle
-        self['g'] = 1 # TODO: What does this mean?
-
-@is_response_to(FileDownloadRequest)
-class FileDownloadResponse(Response):
-    def __init__(self):
-        self.read_schema('file-download.bundle.json')
-
-##############
-class PublicFileDownloadRequest(Request):
-    def __init__(self, handle):
-        self.read_schema('file-download-public.bundle.json')
+class FileGetInfoRequest(Request):
+    def __init__(self, handle, include_url = True):
+        self.read_schema('file-get-info.bundle.json')
 
         self['handle'] = handle
-        self['g'] = 1
+        self['include_url'] = int(include_url)
 
-@is_response_to(PublicFileDownloadRequest)
-class FileDownloadReponse(Response):
+@is_response_to(FileGetInfoRequest)
+class FileGetInfoReponse(Response):
     def __init__(self):
-        self.read_schema('file-download-public.bundle.json')
+        self.read_schema('file-get-info.bundle.json')
+
+##############
+class PublicFileGetInfoRequest(Request):
+    def __init__(self, handle, include_url = True):
+        self.read_schema('public-file-get-info.bundle.json')
+
+        self['handle'] = handle
+        self['include_url'] = int(include_url)
+
+@is_response_to(PublicFileGetInfoRequest)
+class PublicFileGetInfoReponse(Response):
+    def __init__(self):
+        self.read_schema('public-file-get-info.bundle.json')
 
 ##############
 class FileUploadRequest(Request):
