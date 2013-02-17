@@ -9,9 +9,80 @@ from . import errors
 from . import utils
 from . import schemata
 
+service_error = utils.registry(errors.ServiceError, 'ERRORS')
+@service_error(-3)
+class RetryRequest(errors.ServiceError):
+    """The server is too busy and requests a retry"""
+    pass
+
+@service_error(-5)
+class UploadFailed(errors.ServiceError):
+    """The upload failed"""
+    pass
+
+@service_error(-6)
+class ConcurrentIPsExceeded(errors.ServiceError):
+    """Too many different IPs are concurrently accessin this upload URL"""
+    pass
+
+@service_error(-7)
+class InvalidRange(errors.ServiceError):
+    """An invalid range header was specified"""
+    pass
+
+@service_error(-8)
+class UploadURLExpired(errors.ServiceError):
+    """The upload URL has expired"""
+    pass
+
+@service_error(-9)
+class ObjectNotFound(errors.ServiceError):
+    """Object (typically node or user) not found"""
+    pass
+
+@service_error(-10)
+class CircularLinkingAttempted(errors.ServiceError):
+    """A circular link was denied"""
+    pass
+
+@service_error(-11)
+class AccessViolation(errors.ServiceError):
+    """An access violation occured (e.g. writing to a read-only share)"""
+
+@service_error(-12)
+class ObjectExists(errors.ServiceError):
+    """The object already exists on the server"""
+    pass
+
+@service_error(-13)
+class ObjectIncomplete(errors.ServiceError):
+    """The accessed object is incomplete"""
+    pass
+
+@service_error(-15)
+class InvalidSessionId(errors.ServiceError):
+    """The server indicates that the provided session id is invalid"""
+    pass
+
+@service_error(-16)
+class UserBlocked(errors.ServiceError):
+    """The user has been blocked"""
+    pass
+
+@service_error(-17)
+class QuotaExceeded(errors.ServiceError):
+    """The user quota has been exceeded"""
+    pass
+
+@service_error(-18)
+class TemporarilyUnavailable(errors.ServiceError):
+    """The resource is temporarily unavailable"""
+    # TODO: Should this be a retry condition?
+    pass
+
 TRANSACTION_SCHEMA = schemata.Schema.from_file('transaction.json')
-RETRY_CONDITIONS = (requests.exceptions.Timeout, errors.RetryRequest,
-    errors.HTTP500Error)
+RETRY_CONDITIONS = (requests.exceptions.Timeout, RetryRequest,
+    transport.HTTP500Error)
 
 # TODO: Maybe inherit from dict?
 class Operation(object):

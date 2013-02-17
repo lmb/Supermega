@@ -2,7 +2,14 @@ import requests
 from itertools import chain
 
 from . import errors
-from .utils import retry
+from . import utils
+
+http_error = utils.registry(errors.HTTPStatusError, 'STATUS_CODES')
+
+@http_error(500)
+class HTTP500Error(errors.HTTPStatusError):
+    """The server is too busy"""
+    pass
 
 class APIRequest(object):
     API_URL = 'https://g.api.mega.co.nz'
