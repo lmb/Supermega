@@ -1,0 +1,25 @@
+{
+    "request": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "a": {"type": "string", "pattern": "l", "required": true},
+                "n": {"type": "string", "required": true}
+            }
+        },
+
+        "mapping": {
+            "handle": "n"
+        }
+    },
+    "response": {
+        "schema": {
+            "type": "string",
+            "required": true
+        },
+
+        "mapping": {
+            "*": "public_handle"
+        }
+    }
+}

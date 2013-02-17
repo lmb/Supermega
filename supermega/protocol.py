@@ -258,6 +258,17 @@ class FileDeleteResponse(Response):
         self.read_schema('file-delete.bundle.json')
 
 ##############
+class FileGetPublicHandleRequest(Request):
+    def __init__(self, handle):
+        self.read_schema('file-get-public-handle.bundle.json')
+        self['handle'] = handle
+
+@is_response_to(FileGetPublicHandleRequest)
+class FileGetPublicHandleResponse(Response):
+    def __init__(self):
+        self.read_schema('file-get-public-handle.bundle.json')
+
+##############
 class ServerResponse(Response):
     def __init__(self):
         self.read_schema('server.bundle.json')

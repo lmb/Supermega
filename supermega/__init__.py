@@ -507,6 +507,8 @@ class Directory(Containee, Container):
 
 @meta_data_for(Meta.TYPE_FILE)
 class File(Containee, Meta):
+    PUBLIC_BASE_URL = 'https://mega.co.nz/#!'
+
     type = Meta.TYPE_FILE
 
     def _deserialize(self, data, kwargs):
@@ -663,12 +665,30 @@ class File(Containee, Meta):
             raise errors.CorruptFile(
                 "Corrupt download: invalid hash")
 
-    def get_serialized_key(self):
-        cipher = AES.new(self._session.user.master_key, mode=AES.MODE_ECB)
+    def get_serialized_binary_key(self):
+        """Serializes the key into a binary (base 256) string."""
         key = strxor(self.key, self.iv + self.mac)
-        ciphertext = utils.encrypt(cipher, key + self.iv + self.mac)
-        assert(len(ciphertext) == 32)
+        return key + self.iv + self.mac
+
+    def get_serialized_key(self):
+        """Serializes the key into a base64 encoded string."""
+        cipher = AES.new(self._session.user.master_key, mode=AES.MODE_ECB)
+        ciphertext = utils.encrypt(cipher, self.get_serialized_binary_key())
         return b64encode(ciphertext)
+
+    def get_serialized_key_unencrypted(self):
+        """Serializes the unencrypted key into a base64 encoded string."""
+        return b64encode(self.get_serialized_binary_key())
+
+    def get_public_url(self, include_key = True):
+        req = protocol.FileGetPublicHandleRequest(self.handle)
+        res = req.send(self._session)
+
+        handle = [res['public_handle']]
+        if include_key:
+            handle.append(self.get_serialized_key_unencrypted())
+
+        return File.PUBLIC_BASE_URL + '!'.join(handle)
 
     @staticmethod
     def parse_download_url(url):
