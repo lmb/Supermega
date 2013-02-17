@@ -238,7 +238,7 @@ class User(object):
 
     def _decrypt_csid(self, c):
         c, _ = utils.mpi_to_bytes(b64decode(c))
-        c = utils.rsa_decrypt_with_partial(c, self.private_key)
+        c = self.private_key.decrypt(c)
 
         # Take only first 43 bytes since the sid is 0 padded
         self.session_id = b64encode(long_to_bytes(c)[:43])

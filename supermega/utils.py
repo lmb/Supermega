@@ -59,29 +59,40 @@ def link_unwrap(notify, args, kwargs):
 
     return unwrapper
 
-RSAPartialKey = namedtuple('RSAPartialKey', ['p', 'q', 'd', 'u'])
+class RSAPartialKey(object):
+    """A partial RSA key, as supplied by MEGA (modulo and private exponent only)."""
 
-# From http://stackoverflow.com/questions/10689273/
-def rsa_decrypt_with_partial(c, key):
-    """Decrypts a given ciphertext with modulus and private exponent only.
+    def __init__(self, p, q, d, u):
+        n = p * q
 
-    The ciphertext must not be longer than the modulo."""
-    n = key.p * key.q
+        # From http://stackoverflow.com/questions/10689273/
+        try:
+            # pycrypto >=2.5, only tested with _slowmath
+            impl = RSA.RSAImplementation(use_fast_math=False)
+            partial = impl.construct((n, 0L))
+            partial.key.d = d
+        except TypeError:
+            # pycrypto <=2.4.1
+            partial = RSA.construct((n, 0L, d))
 
-    try:
-        # pycrypto >=2.5, only tested with _slowmath
-        impl = RSA.RSAImplementation(use_fast_math=False)
-        partial = impl.construct((n, 0L))
-        partial.key.d = key.d
-    except TypeError:
-        # pycrypto <=2.4.1
-        partial = RSA.construct((n, 0L, key.d)) 
+        self.n = n
+        self.q = q
+        self.p = p
+        self.d = d
+        self.u = u
+        self.partial = partial
 
-    # TODO: Fix assert
-    # assert(len(c) <= len(n))
+    def decrypt(self, ciphertext):
+        """Decrypts a given ciphertext.
 
-    c = bytes_to_long(c)
-    return partial.key._decrypt(c)
+        The ciphertext must not be longer than the modulo."""
+         
+        ciphertext = bytes_to_long(ciphertext)
+
+        # TODO: Not sure about this
+        assert(ciphertext < self.n)
+
+        return self.partial.key._decrypt(ciphertext)
 
 def cbc_mac(key, plaintext, IV = None):
     IV = IV or '\0' * AES.block_size
@@ -147,14 +158,17 @@ def mpi_to_bytes(mpi, offset = 0):
 
     if len(mpi) - offset < 2:
         # TODO: Find a better exception
-        raise Exception("mpi is less than two bytes long")
+        raise ValueError("mpi is less than two bytes long")
 
     bits, = struct.unpack('>H', mpi[offset:offset + 2]);
     bytes = (bits + 7) // 8;
     offset += 2
 
+    if bits > 4096:
+        raise ValueError("Exceptionally large mpi encountered")
+
     if len(mpi) < offset + bytes:
-        raise Exception("Not enough data left")
+        raise ValueError("Not enough data left")
 
     return mpi[offset:offset + bytes], offset + bytes
 
