@@ -8,92 +8,137 @@ What does it do right now?
 
 It pretty much does what all the other python MEGA.co.nz clients do (there are two I know of):
 
-* Lets you login
-* Lets you use an ephemeral account
-* Gives you a list of files / directories to iterate over
-* Lets you download a public file
-* Upload / download / move / delete of your own files
+* Lets you login (your account, ephemeral, from environment)
+* Inspect the contents of your account
+* Download public files
+* Upload / download / move / delete of your own files, create public links
 
 Why should I use it over XYZ?
 -----------------------------
 
 Supermega goes through more effort than the other client libs. Requests to and from the MEGA servers are validated against a schema, and as little as possible of the wheel is reinvented when it comes to cryptography. That is usually a good thing.
 
-Examples
---------
+Usage
+-----
 
-_Neat stuff:_
+### Login
 
 ```python
-import supermega
+from supermega import Session
 
-s1 = supermega.Session('user1@example.org', 'pass1')
-s2 = supermega.Session('user2@example.org', 'pass2')
+sess = Session()
+sess.login('user@example.org', 'password')
+# or
+sess = Session('user@example.org', 'password')
 
-source_file = s2.datastore['FILE_ID'] # Try iterating s2.root.walk()
-new_file_on_s1 = supermega.File.upload(s1.root, source_file)
+# ephemeral account
+sess.ephemeral()
+
+# from MEGA_USERNAME and MEGA_PASSWORD env vars
+sess = Session.from_env()
 ```
 
-Source file from account 2 is now on account 1 (this of course involves downloading the file from account 2 first).
-
-_Download a file:_
+### Upload
 
 ```python
-import supermega
+from supermega import Session, File
 
+sess = ...
+
+# Upload a regular file
+with open('/path/to/file', 'rb') as handle:
+    # First argument is the directory the file is uploaded to
+    file = File.upload(sess.root, handle, 'filename.txt')
+    # or (doesn't make much sense though)
+    file = File.upload(sess.trash, handle, 'filename.txt')
+
+    print file.get_public_url()
+
+# Upload from another MEGA file, even from an other account
+file = ... # See below
+new_file = File.upload(sess.root, file)
+```
+
+### Download
+
+From a public url:
+
+```python
+from supermega import Session
+
+# Downloads into current working dir
+Session.download_to_file('https://your/mega/url')
+
+# Downloads into file-like object
+with open('../other/dir/filename.ext', 'wb') as handle:
+    Session.download_to_file('https://your/mega/url', handle)
+
+# Provide your own download handler
 def to_disk(file, chunks):
     with open(file.name, 'wb') as f:
         for chunk in chunks:
             f.write(chunk)
 
-s = supermega.Session('user@example.org', 'password')
-s.download(to_disk, 'https://mega.co.nz/#!FILE_URL')
+Session.download(to_disk, 'https://your/mega/url')
 ```
 
-_Download a file into the current working directory:_
+A file in your MEGA account:
 
 ```python
-import supermega
+from supermega import Session
 
-s = supermega.Session()
-s.download_to_file('https://mega.co.nz/#!FILE_URL') # also works with supermega.File objects
+# login, etc.
+
+file = ... # See 'Listing / finding files'
+
+sess.download_to_file(file)
+# or
+def to_disk(...):
+    # See above
+
+file.download(to_disk)
+# or
+sess.download(to_disk, file)
 ```
 
-_Download a file into an arbitrary file-like object:_
+### Listing / finding files
+
 ```python
-import supermega
 
-s = supermega.Session()
-with open('FILENAME', 'wb') as f:
-    s.download_to_file('https://mega.co.nz/#!FILE_URL', f)
+from supermega import Session
+
+# login, etc.
+
+sess.root.print_tree()
+sess.trash.print_tree()
+
+# lookup by filename (this is not recursive)
+file = sess.root['filename.txt']
+
+# lookup by file handle
+file = sess.datastore['handle']
 ```
 
-_List files:_
+### Other file operations
 
 ```python
-import supermega
+from supermega import Session
 
-s = supermega.Session('user@example.org', 'password')
+# login
+sess = ...
 
-for parent, subdirs, files in s.root.walk():
-    print "-----------------------"
-    print "For: {}".format(parent)
-    print "Subdirs:"
-    for subdir in subdirs:
-        print subdir
+# get hold of a file object
+file = ...
 
-    print
-    print "Files:"
-    for f in files:
-        print f
+# This does not delete a file but merely moves it into the "Trash" folder
+file.move_to(sess.trash)
 
-    print
+# This deletes a file, which does not have to be in the trash
+file.delete()
 ```
 
-You can use the file objects as arguments to the Session.download* functions, although this only makes sense if you're logged in.
-
-Installing
-----------
+Installation
+------------
 
 Should be as easy as doing a `pip install git+git://github.com/lmb/Supermega.git#egg=supermega`. The dependencies might be messed up, please let me know.
 
