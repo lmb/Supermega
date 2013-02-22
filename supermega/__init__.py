@@ -717,8 +717,11 @@ class File(Containee, Meta):
 
         return File.PUBLIC_BASE_URL + '!'.join(handle)
 
-    @staticmethod
-    def parse_download_url(url):
+    @classmethod
+    def parse_download_url(cls, url):
+        if not url.startswith(cls.PUBLIC_BASE_URL):
+            raise errors.SupermegaException('Invalid public download URL')
+
         info = urlparse.urlparse(url).fragment.lstrip('!').split('!', 2)
         return info[0], b64decode(info[1])
 
