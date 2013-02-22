@@ -13,11 +13,6 @@ It pretty much does what all the other python MEGA.co.nz clients do (there are t
 * Download public files
 * Upload / download / move / delete of your own files, create public links
 
-Why should I use it over XYZ?
------------------------------
-
-Supermega goes through more effort than the other client libs. Requests to and from the MEGA servers are validated against a schema, and as little as possible of the wheel is reinvented when it comes to cryptography. That is usually a good thing.
-
 Usage
 -----
 
