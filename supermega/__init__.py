@@ -18,6 +18,7 @@ import os
 import os.path
 import requests
 import logging
+import difflib
 
 from . import errors
 from . import protocol
@@ -32,7 +33,7 @@ class Session(object):
     def __init__(self, username = None, password = None):
         self.sequence = itertools.count(0)
         self.keystore = Keystore()
-        self.datastore = Datastore()
+        self._datastore = None
         self.user = User(self)
 
         # self._poller = gevent.Greenlet(self._poll_server)
@@ -66,22 +67,34 @@ class Session(object):
     _maxaction = property(**_maxaction())
 
     @property
+    def datastore(self):
+        if not self._datastore:
+            self._datastore = Datastore(self)
+        return self._datastore
+
+    @property
     def root(self):
-        if self.datastore.root is None:
-            self.init_datastore()
         return self.datastore.root
 
     @property
     def trash(self):
-        if self.datastore.trash is None:
-            self.init_datastore()
         return self.datastore.trash
 
     @property
     def inbox(self):
-        if self.datastore.inbox is None:
-            self.init_datastore()
         return self.datastore.inbox
+
+    def find(self, *args, **kwargs):
+        """Convenience accessor for Datastore.find()."""
+        return self.datastore.find(*args, **kwargs)
+
+    def find_directory(self, *args, **kwargs):
+        """Convenience accessor for Datastore.find_directory()."""
+        return self.datastore.find_directory(*args, **kwargs)
+
+    def find_file(self, *args, **kwargs):
+        """Convenience accessor for Datastore.find_file()."""
+        return self.datastore.find_file(*args, **kwargs)
 
     def __str__(self):
         if not self.user:
@@ -97,15 +110,6 @@ class Session(object):
         obj = cls()
         obj.user.ephemeral()
         return obj
-
-    def init_datastore(self):
-        req = protocol.FilesRequest()
-        res = req.send(self)
-
-        self._maxaction = res['maxaction']
-        for data in res['files']:
-            meta = Meta.for_data(data, self)
-            self.datastore.add(meta)
 
     def download(self, func, fileobj, *args, **kwargs):
         if isinstance(fileobj, basestring):
@@ -285,11 +289,19 @@ class Keystore(dict):
         return None, None
 
 class Datastore(object):
-    def __init__(self):
+    def __init__(self, session):
         self._objects = {}
         self.root = None
         self.inbox = None
         self.trash = None
+
+        req = protocol.FilesRequest()
+        res = req.send(session)
+
+        # self._maxaction = res['maxaction']
+        for data in res['files']:
+            meta = Meta.for_data(data, session)
+            self.add(meta)
 
     def add(self, meta):
         if hasattr(meta, 'parent') and meta.parent:
@@ -304,6 +316,42 @@ class Datastore(object):
                 self.trash = meta
 
         self._objects[meta.handle] = meta
+
+    def find(self, name, strict=False, type=None):
+        """Search for a file or directory."""
+        results = []
+        type = type or Containee
+        matcher = difflib.SequenceMatcher()
+        matcher.set_seq2(name)
+
+        cutoff = 0.8
+
+        for obj in self._objects.itervalues():
+            if not isinstance(obj, type):
+                continue
+
+            matcher.set_seq1(obj.name)
+
+            if strict and obj.name == name:
+                results.append((1, obj))
+            elif matcher.real_quick_ratio() >= cutoff and \
+                matcher.quick_ratio() >= cutoff and \
+                matcher.ratio() >= cutoff:
+                results.append((matcher.ratio(), obj))
+
+        results.sort()
+        results.reverse()
+        return [v for _, v in results]
+
+    def find_file(self, *args, **kwargs):
+        """Search for a file."""
+        kwargs['type'] = File
+        return self.find(*args, **kwargs)
+
+    def find_directory(self, *args, **kwargs):
+        """Search for a directory."""
+        kwargs['type'] = Directory
+        return self.find(*args, **kwargs)
 
     def __getitem__(self, key):
         if not len(self._objects):
