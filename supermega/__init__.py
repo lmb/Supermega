@@ -164,6 +164,10 @@ class Session(object):
         path = filter(len, path.split('/'))
         path.reverse()
 
+        if len(path) and path[-1] == '~trash':
+            node = self.trash
+            path.pop()
+
         try:
             while path:
                 part = path.pop()
