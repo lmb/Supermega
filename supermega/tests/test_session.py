@@ -38,9 +38,8 @@ class TestSession(unittest.TestCase):
 		self.sess.download(verify_hash, url, self, sha256)
 
 	def test_ephemeral_account(self):
-		sess = self.sess
-		sess.user.ephemeral()
-		sess.init_datastore()
+		sess = Session.ephemeral()
+		sess.datastore # This triggers lazy-loading the datastore
 
 	def test_key_derivation(self):
 		self.assertEqual(User.derive_key("password"), 'd\x039r^n\xbd\x13\xa2_\x00R\x12\x9f|\xb1')
