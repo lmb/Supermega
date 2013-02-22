@@ -53,6 +53,12 @@ class Session(object):
 
         return "%s for user '%s'" % (self.__name__, self.user.username)
 
+    def __eq__(self, other):
+        try:
+            return self.id == other.id and self.user == other.user
+        except AttributeError:
+            return False
+
     @classmethod
     def from_env(cls):
         return cls(os.environ['MEGA_USERNAME'], os.environ['MEGA_PASSWORD'])
@@ -62,6 +68,15 @@ class Session(object):
         obj = cls()
         obj.user.ephemeral()
         return obj
+
+    def id():
+        doc = "The current session ID."
+        def fget(self):
+            return self._reqs_session.params['sid']
+        def fset(self, value):
+            self._reqs_session.params['sid'] = value
+        return locals()
+    id = property(**id())
 
     ## Files / Directories
     @property
@@ -221,6 +236,12 @@ class User(object):
     def __init__(self, session):
         self._session = session
 
+    def __eq__(self, other):
+        try:
+            return self.username == other.username
+        except AttributeError:
+            return False
+
     def login(self, username, password):
         self.username = username
         self.password = password
@@ -357,6 +378,14 @@ class Meta(object):
 
     def __init__(self, session):
         self._session = session
+
+    def __eq__(self, other):
+        session = self._session
+        try:
+            return (self.handle == other.handle and session.user ==
+                other._session.user)
+        except AttributeError:
+            return False
 
     @classmethod
     def deserialize(cls, data, **kwargs):
