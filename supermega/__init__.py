@@ -32,7 +32,7 @@ __all__ = [ 'Session', 'File', 'User' ]
 class Session(object):
     def __init__(self, username = None, password = None):
         self.sequence = itertools.count(0)
-        self.keystore = Keystore()
+        self._keystore = {}
         self.user = User(self)
 
         self._reqs_session = requests.Session()
@@ -63,6 +63,7 @@ class Session(object):
         obj.user.ephemeral()
         return obj
 
+    ## Files / Directories
     @property
     def root(self):
         self._load_filetree()
@@ -199,6 +200,17 @@ class Session(object):
                 print "opcode = {}, maxaction = {}".format(res['opcode'], res['maxaction'])
                 self._maxaction = res['maxaction']
 
+    ## Keys
+    def get_key(self, key_ids):
+        for key_id in key_ids:
+            if key_id in self._keystore:
+                return key_id, self._keystore[key_id]
+
+        return None, None
+
+    def add_key(self, key_id, key):
+        self._keystore[key_id] = key
+
 class User(object):
     AES_KEY_LENGTH_BITS = 128
 
@@ -255,7 +267,7 @@ class User(object):
         userhandle = res['userhandle']
 
         self.userhandle = userhandle
-        self._session.keystore[userhandle] = self.master_key
+        self._session.add_key(userhandle, self.master_key)
 
         public_key = b64decode(public_key)
 
@@ -331,14 +343,6 @@ class User(object):
             hash = cipher.encrypt(hash)
 
         return b64encode(hash[0:4] + hash[8:12])
-
-class Keystore(dict):
-    def get_any(self, key_ids):
-        for key_id in key_ids:
-            if key_id in self:
-                return key_id, self[key_id]
-
-        return None, None
 
 class Meta(object):
     TYPE_FILE = 0
@@ -467,13 +471,13 @@ class Containee(object):
         # TODO: Refactor and make this required
         self.parent = data.get('parent', None)
 
-        keystore = self._session.keystore
+        session = self._session
         cipher_info = kwargs.get('cipher_info', None)
 
         if not cipher_info:
             ## Find a suitable user / share key to decrypt the object key
             self.keys = dict([x.split(':') for x in data['keys'].split('/')])
-            key_id, intermediate_key = keystore.get_any(self.keys.iterkeys())
+            key_id, intermediate_key = session.get_key(self.keys.iterkeys())
 
             if not key_id:
                 raise SupermegaException("Missing a shared key")
