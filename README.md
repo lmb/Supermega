@@ -27,7 +27,7 @@ sess.login('user@example.org', 'password')
 sess = Session('user@example.org', 'password')
 
 # ephemeral account
-sess.ephemeral()
+sess = Session.ephemeral()
 
 # from MEGA_USERNAME and MEGA_PASSWORD env vars
 sess = Session.from_env()

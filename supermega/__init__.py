@@ -33,6 +33,7 @@ class Session(object):
         self.sequence = itertools.count(0)
         self.keystore = Keystore()
         self.datastore = Datastore()
+        self.user = User(self)
 
         # self._poller = gevent.Greenlet(self._poll_server)
 
@@ -89,12 +90,13 @@ class Session(object):
         return "%s for user '%s'" % (self.__name__, self.user.username)
 
     def login(self, username, password):
-        self.user = User(self)
         self.user.login(username, password)
 
-    def ephemeral(self):
-        self.user = User(self)
-        self.user.ephemeral()
+    @classmethod
+    def ephemeral(cls):
+        obj = cls()
+        obj.user.ephemeral()
+        return obj
 
     def init_datastore(self):
         req = protocol.FilesRequest()

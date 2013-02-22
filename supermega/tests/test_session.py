@@ -39,10 +39,7 @@ class TestSession(unittest.TestCase):
 
 	def test_ephemeral_account(self):
 		sess = self.sess
-
-		user = User(sess)
-		user.ephemeral()
-
+		sess.user.ephemeral()
 		sess.init_datastore()
 
 	def test_key_derivation(self):
