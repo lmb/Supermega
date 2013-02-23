@@ -638,7 +638,7 @@ class Directory(Containee, Container):
     def delete(self):
         super(Directory, self).delete()
 
-        for _, subdirs, files in self.children:
+        for _, subdirs, files in self.walk():
             map(self._session.remove_node, subdirs, files)
 
         self.children = None
