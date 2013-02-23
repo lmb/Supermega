@@ -32,7 +32,7 @@ class UploadFailed(errors.ServiceError):
 
 @service_error(-6)
 class ConcurrentIPsExceeded(errors.ServiceError):
-    """Too many different IPs are concurrently accessin this upload URL"""
+    """Too many different IPs are concurrently accessing this upload URL"""
     pass
 
 @service_error(-7)
