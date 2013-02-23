@@ -1,0 +1,30 @@
+{
+	"request": {
+		"opcode": "dummy opcode",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "required": true,
+                    "pattern": "has to match this"
+                },
+                "int": {
+                	"type": "integer",
+                	"required": true
+                }
+            }
+        },
+        "mapping": {"pattern": "pattern", "int": "int"}
+    },
+    "response": {
+        "schema": {"type": "object"},
+        "mapping": {
+            "from": "to",
+            "from_nested": ["to_nested", {
+                "1": "a",
+                "2": "b"
+            }]
+        }
+    }
+}

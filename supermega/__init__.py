@@ -153,8 +153,7 @@ class Session(object):
         if len(self._datastore):
             return
 
-        req = protocol.FilesRequest()
-        res = req.send(self)
+        res = protocol.Files(session=self).response()
 
         for data in res['files']:
             meta = Meta.for_data(data, self)
@@ -205,6 +204,7 @@ class Session(object):
     @utils.retry(protocol.RETRY_CONDITIONS)
     def _poll_server(self):
         while True:
+            # TODO: This code is (1) dead and (2) not working anymore
             # If we're running, _maxaction is guaranteed to be set
             req = transport.ServerRequest(self._maxaction, self)
             content = req.send().content
@@ -247,8 +247,8 @@ class User(object):
         self.password = password
         self._derived = User.derive_key(password)
 
-        req = protocol.UserSessionRequest(username, self.userhash)
-        res = req.send(self._session)
+        res = protocol.UserSession(
+            username, self.userhash).response(self._session)
 
         self._decrypt_master_key(res['master_key'])
         self._decrypt_private_key(res['private_key'])
@@ -256,7 +256,7 @@ class User(object):
 
         # This effectively completes the login, sid will be appended to all
         # requests going forward.
-        self._session._reqs_session.params['sid'] = self.session_id
+        self._session.id = self.session_id
 
         self.update()
 
@@ -266,27 +266,25 @@ class User(object):
         self.master_key = long_to_bytes(
             random.getrandbits(self.AES_KEY_LENGTH_BITS))
         challenge = long_to_bytes(random.getrandbits(self.AES_KEY_LENGTH_BITS))
+        session = self._session
 
         cipher = AES.new(self._derived, mode=AES.MODE_CBC, IV='\0'*16)
         cipher_master = AES.new(self.master_key, mode=AES.MODE_CBC, IV='\0'*16)
 
-        req = protocol.UserUpdateRequest(
+        res = protocol.UserUpdate(
             b64encode(utils.encrypt(cipher, self.master_key)),
             b64encode(challenge + utils.encrypt(cipher_master, challenge))
-        )
-        res = req.send(self._session)
+        ).response(session)
 
-        req = protocol.EphemeralUserSessionRequest(res['handle'])
-        res = req.send(self._session)
+        res = protocol.EphemeralUserSession(res['handle']).response(session)
 
         self._decrypt_master_key(res['master_key'])
         self._decrypt_tsid(res['session_id'])
 
-        self._session._reqs_session.params['sid'] = self.session_id
+        self._session.id = self.session_id
 
     def update(self):
-        req = protocol.UserInformationRequest()
-        res = req.send(self._session)
+        res = protocol.UserInformation().response(self._session)
 
         public_key = res['public_key']
         userhandle = res['userhandle']
@@ -579,10 +577,11 @@ class File(Containee, Meta):
     def from_url(cls, session, url):
         (handle, cipher_info) = cls.parse_download_url(url)
 
-        req = protocol.PublicFileGetInfoRequest(handle, False)
-        res = req.send(session)
+        res = protocol.PublicFileGetInfo(
+            handle, include_url=False
+        ).response(session)
 
-        return cls.deserialize(res.as_dict(), handle=handle, session=session,
+        return cls.deserialize(res, handle=handle, session=session,
             cipher_info=cipher_info, is_public_file=True)
 
     @classmethod
@@ -598,8 +597,8 @@ class File(Containee, Meta):
 
         assert(name is not "")
 
-        req = protocol.FileUploadRequest(size)
-        base_url = req.send(parent._session)['url'] + '/{}'
+        res = protocol.FileUpload(size).response(parent._session)
+        base_url = res['url'] + '/{}'
         requests_session = parent._session._reqs_session
 
         key = long_to_bytes(random.getrandbits(128))
@@ -645,8 +644,9 @@ class File(Containee, Meta):
             new_file.mac = file_mac.digest()
             new_file.key = key
 
-            req = protocol.FileAddRequest(parent, new_file, completion_token)
-            res = req.send(parent._session)
+            res = protocol.FileAdd(
+                parent.handle, new_file, completion_token
+            ).response(parent._session)
 
             assert(len(res['files']) == 1)
 
@@ -658,10 +658,10 @@ class File(Containee, Meta):
 
     def chunks(self):
         if self.is_public_file:
-            req = protocol.PublicFileGetInfoRequest(self.handle)
+            req = protocol.PublicFileGetInfo(self.handle)
         else:
-            req = protocol.FileGetInfoRequest(self.handle)
-        res = req.send(self._session)
+            req = protocol.FileGetInfo(self.handle)
+        res = req.response(self._session)
 
         req = self._session._reqs_session.get(res['url'], stream=True,
             params={'sid': None, 'ssl': None})
@@ -674,13 +674,11 @@ class File(Containee, Meta):
         if not isinstance(new_parent, Container):
             raise TypeError('The new parent has to be a container')
 
-        req = protocol.FileMoveRequest(self, new_parent)
-        res = req.send(self._session)
+        res = protocol.FileMove(self, new_parent).response(self._session)
         assert(res['errno'] == 0)
 
     def delete(self):
-        req = protocol.FileDeleteRequest(self)
-        res = req.send(self._session)
+        res = protocol.FileDelete(self.handle).response(self._session)
         assert(res['errno'] == 0)
 
     def _extract_cipher_spec(self, cipher_info):
@@ -737,12 +735,12 @@ class File(Containee, Meta):
         return b64encode(self.get_serialized_binary_key())
 
     def get_public_url(self, include_key = True):
-        req = protocol.FileGetPublicHandleRequest(self.handle)
-        res = req.send(self._session)
+        res = protocol.FileGetPublicHandle(self.handle).response(self._session)
 
         handle = [res['public_handle']]
         if include_key:
-            handle.append(self.get_serialized_key_unencrypted())
+            handle
+            ppend(self.get_serialized_key_unencrypted())
 
         return File.PUBLIC_BASE_URL + '!'.join(handle)
 

@@ -10,6 +10,16 @@ from . import utils
 from . import schemata
 
 service_error = utils.registry(errors.ServiceError, 'ERRORS')
+@service_error(-1)
+class InternalError(errors.ServiceError):
+    """An internal service error has occured"""
+    pass
+
+@service_error(-2)
+class ArgumentError(errors.ServiceError):
+    """Invalid arguments were passed to a request"""
+    pass
+
 @service_error(-3)
 class RetryRequest(errors.ServiceError):
     """The server is too busy and requests a retry"""
@@ -84,71 +94,73 @@ TRANSACTION_SCHEMA = schemata.Schema.from_file('transaction.json')
 RETRY_CONDITIONS = (requests.exceptions.Timeout, RetryRequest,
     transport.HTTP500Error)
 
-# TODO: Maybe inherit from dict?
 class Operation(object):
-    OPCODE_KEY = 'a'
-    _data = {}
+    _request = None
+    _response = None
+    _request_data = {}
+    _response_data = None
+    schema = None
 
-    def read_schema(self, part, schema):
-        self._bundle = schemata.SchemaBundle.from_file(schema, part)
+    def __init__(self, *args, **kwargs):
+        self.session = kwargs.pop('session', None)
 
-    def get(self, *args, **kwargs):
-        return self._data.get(*args, **kwargs)
+        try:
+            self._request = schemata.SchemaBundle.from_file(
+                self.schema, 'request')
+            self.request(*args, **kwargs)
+        except KeyError:
+            pass
 
-    def __getitem__(self, key):
-        return self._data[key]
+        try:
+            self._response = schemata.SchemaBundle.from_file(
+                self.schema, 'response')
+        except KeyError:
+            pass
 
-    def __contains__(self, key):
-        return self._data.__contains__(key)
+        if not self._request and not self._response:
+            raise errors.SupermegaException(
+                'Need either request or response in schema')
 
-class Request(Operation):
-    """Represents a request to the MEGA servers."""
+    def request(self, *args, **kwargs):
+        pass
 
-    def read_schema(self, *args, **kwargs):
-        super(Request, self).read_schema('request', *args, **kwargs)
-        self.opcode = (self._bundle.schema.definition['properties']
-            [Operation.OPCODE_KEY]['pattern'])
+    def response(self, session = None):
+        session = session or self.session
 
-    def as_serializable_dict(self):
-        data = self._bundle.translate(self._data)
-        data[Operation.OPCODE_KEY] = self.opcode
-        self._bundle.schema.validate(data)
+        if not self._response_data:
+            Transaction(self).send(session)
+
+        return copy.deepcopy(self._response_data)
+
+    def get_serializable_request(self):
+        data = self._request.translate(self._request_data)
+        data[schemata.SchemaBundle.OPCODE_KEY] = self._request.opcode
+
+        self._request.schema.validate(data)
         return data
 
+    def load_response(self, data):
+        self._response.schema.validate(data)
+        self._response_data = self._response.translate(data)
+
+    def get(self, *args, **kwargs): # ???
+        return self._request_data.get(*args, **kwargs)
+
+    def __getitem__(self, key):
+        return self._request_data[key]
+
     def __setitem__(self, attr, value):
-        self._bundle.validate(value, (attr,))
-        self._data[attr] = value
+        self._request.validate(value, (attr,))
+        self._request_data[attr] = value
 
-    def send(self, session):
-        transaction = Transaction(self)
-        return transaction.send(session)[0]
-
-class Response(Operation):
-    """Represents a response from the MEGA servers."""
-
-    def load(self, request, data):
-        self.request = request
-        self._bundle.schema.validate(data)
-        self._data = self._bundle.translate(data)
-
-    def read_schema(self, *args, **kwargs):
-        super(Response, self).read_schema('response', *args, **kwargs)
-
-    def as_dict(self):
-        """Returns all response data."""
-        return copy.deepcopy(self._data)
-
-def is_response_to(request_class):
-    def decorate(response_class):
-        request_class.RESPONSE = response_class
-        return response_class
-    return decorate
+    def __contains__(self, key):
+        return self._request_data.__contains__(key)
 
 class Transaction(list):
     class Encoder(json.JSONEncoder):
         def default(self, obj):
-            if isinstance(obj, Request):
-                return obj.as_serializable_dict()
+            if isinstance(obj, Operation):
+                return obj.get_serializable_request()
 
             return super(json.JSONEncoder, self).default(obj)
 
@@ -158,7 +170,7 @@ class Transaction(list):
     def serialize(self):
         return json.dumps(self, cls=self.Encoder)
 
-    def deserialize(self, request, data):
+    def deserialize(self, request_transaction, data):
         data = json.loads(data)
 
         # The server seems to return either -errno or [-errno]
@@ -170,10 +182,9 @@ class Transaction(list):
 
         TRANSACTION_SCHEMA.validate(data)
 
-        for req, response_data in itertools.izip(request, data):
-            res = req.RESPONSE()
-            res.load(req, response_data)
-            self.append(res)
+        for op, response_data in itertools.izip(request_transaction, data):
+            op.load_response(response_data)
+            self.append(op)
 
     def send(self, session):
         request = transport.TransactionRequest(self, session)
@@ -186,111 +197,60 @@ class Transaction(list):
         response.deserialize(self, data)
         return response
 
-    # def send(self, session, notify, *args, **kwargs):
-    #   greenlet = gevent.Greenlet(self.send_wait, session)
-    #   greenlet.link_value(utils.link_unwrap(notify, args, kwargs))
-    #   session._pool.start(greenlet)
+class UserSession(Operation):
+    schema = 'user-session.bundle.json'
 
-#############
-class UserSessionRequest(Request):
-    def __init__(self, user, hash):
-        self.read_schema('user-session.bundle.json')
-
+    def request(self, user, hash):
         self['user'] = user
         if hash:
             self['hash'] = hash
 
-@is_response_to(UserSessionRequest)
-class UserSessionResponse(Response):
-    def __init__(self):
-        self.read_schema('user-session.bundle.json')
+class EphemeralUserSession(Operation):
+    schema = 'user-session-ephemeral.bundle.json'
 
-class EphemeralUserSessionRequest(Request):
-    def __init__(self, handle):
-        self.read_schema('user-session-ephemeral.bundle.json')
+    def request(self, handle):
         self['handle'] = handle
 
-@is_response_to(EphemeralUserSessionRequest)
-class EphemeralUserSessionResponse(Response):
-    def __init__(self):
-        self.read_schema('user-session-ephemeral.bundle.json')
+class UserInformation(Operation):
+    schema = 'user-information.bundle.json'
 
-#############
-class UserInformationRequest(Request):
-    def __init__(self):
-        self.read_schema('user-information.bundle.json')
+class UserUpdate(Operation):
+    schema = 'user-update.bundle.json'
 
-@is_response_to(UserInformationRequest)
-class UserInformationResponse(Response):
-    def __init__(self):
-        self.read_schema('user-information.bundle.json')
-
-#############
-class UserUpdateRequest(Request):
-    def __init__(self, key, challenge):
-        self.read_schema('user-update.bundle.json')
+    def request(self, key, challenge):
         self['key'] = key
         self['challenge'] = challenge
 
-@is_response_to(UserUpdateRequest)
-class UserUpdateReponse(Response):
-    def __init__(self):
-        self.read_schema('user-update.bundle.json')
-
-#############
-class FilesRequest(Request):
-    def __init__(self):
-        self.read_schema('files.bundle.json')
+class Files(Operation):
+    schema = 'files.bundle.json'
+    def request(self):
         self['c'] = 1 # TODO: Find out what this means
 
-@is_response_to(FilesRequest)
-class FilesResponse(Response):
-    def __init__(self):
-        self.read_schema('files.bundle.json')
+class FileGetInfo(Operation):
+    schema = 'file-get-info.bundle.json'
 
-##############
-class FileGetInfoRequest(Request):
-    def __init__(self, handle, include_url = True):
-        self.read_schema('file-get-info.bundle.json')
-
+    def request(self, handle, include_url = True):
         self['handle'] = handle
         self['include_url'] = int(include_url)
 
-@is_response_to(FileGetInfoRequest)
-class FileGetInfoReponse(Response):
-    def __init__(self):
-        self.read_schema('file-get-info.bundle.json')
+class PublicFileGetInfo(Operation):
+    schema = 'public-file-get-info.bundle.json'
 
-##############
-class PublicFileGetInfoRequest(Request):
-    def __init__(self, handle, include_url = True):
-        self.read_schema('public-file-get-info.bundle.json')
-
+    def request(self, handle, include_url = True):
         self['handle'] = handle
         self['include_url'] = int(include_url)
 
-@is_response_to(PublicFileGetInfoRequest)
-class PublicFileGetInfoReponse(Response):
-    def __init__(self):
-        self.read_schema('public-file-get-info.bundle.json')
+class FileUpload(Operation):
+    schema = 'file-upload.bundle.json'
 
-##############
-class FileUploadRequest(Request):
-    def __init__(self, size):
-        self.read_schema('file-upload.bundle.json')
+    def request(self, size):
         self['size'] = size
 
-@is_response_to(FileUploadRequest)
-class FileUploadResponse(Response):
-    def __init__(self):
-        self.read_schema('file-upload.bundle.json')
+class FileAdd(Operation):
+    schema = 'file-add.bundle.json'
 
-##############
-class FileAddRequest(Request):
-    def __init__(self, parent, new_file, completion_token):
-        self.read_schema('file-add.bundle.json')
-
-        self['parent'] = parent.handle
+    def request(self, parent_handle, new_file, completion_token):
+        self['parent'] = parent_handle
         self['files'] = [{
             'completion_token': completion_token,
             'type': new_file.type,
@@ -298,48 +258,24 @@ class FileAddRequest(Request):
             'key': new_file.get_serialized_key()
         }]
 
-@is_response_to(FileAddRequest)
-class FileAddResponse(Response):
-    def __init__(self):
-        self.read_schema('file-add.bundle.json')
-
-##############
-class FileMoveRequest(Request):
-    def __init__(self, fileobj, new_parent):
-        self.read_schema('file-move.bundle.json')
+class FileMove(Operation):
+    schema = 'file-move.bundle.json'
+    def request(self, fileobj, new_parent):
         self['new_parent'] = new_parent.handle
         self['handle'] = fileobj.handle
         self['request_id'] = ''
 
-@is_response_to(FileMoveRequest)
-class FileMoveResponse(Response):
-    def __init__(self):
-        self.read_schema('file-move.bundle.json')
+class FileDelete(Operation):
+    schema = 'file-delete.bundle.json'
 
-##############
-class FileDeleteRequest(Request):
-    def __init__(self, file):
-        self.read_schema('file-delete.bundle.json')
-        self['handle'] = file.handle
+    def request(self, file_handle):
+        self['handle'] = file_handle
         self['request_id'] = ''
 
-@is_response_to(FileDeleteRequest)
-class FileDeleteResponse(Response):
-    def __init__(self):
-        self.read_schema('file-delete.bundle.json')
-
-##############
-class FileGetPublicHandleRequest(Request):
-    def __init__(self, handle):
-        self.read_schema('file-get-public-handle.bundle.json')
+class FileGetPublicHandle(Operation):
+    schema = 'file-get-public-handle.bundle.json'
+    def request(self, handle):
         self['handle'] = handle
 
-@is_response_to(FileGetPublicHandleRequest)
-class FileGetPublicHandleResponse(Response):
-    def __init__(self):
-        self.read_schema('file-get-public-handle.bundle.json')
-
-##############
-class ServerResponse(Response):
-    def __init__(self):
-        self.read_schema('server.bundle.json')
+class PollServer(Operation):
+    schema = 'server.bundle.json'

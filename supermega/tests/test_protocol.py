@@ -4,64 +4,39 @@ from .. import protocol
 from .. import schemata
 from .. import errors
 
-class TestRequest(unittest.TestCase):
+class TestOperation(unittest.TestCase):
+    class DummyOperation(protocol.Operation):
+        schema = '../tests/dummy-operation.bundle.json'
+
     def setUp(self):
-        self.req = protocol.Request()
-        self.req._bundle = schemata.SchemaBundle('check-pattern', {
-                'schema': {
-                    'type': 'object', 'properties': {
-                        'test': {
-                            'type': 'string',
-                            'required': True,
-                            'pattern': 'has to match this'
-                        }
-                    }
-                },
-                'mapping': {'test': 'test'}
-            }
-        )
+        self.op = self.DummyOperation()
 
-        self.req.opcode = ''
-
-    def test_assing_invalid_value(self):
+    def test_assign_invalid_value(self):
         with self.assertRaises(errors.ValidationError):
-            self.req['test'] = 'wrong value'
+            self.op['pattern'] = 'wrong value'
 
     def test_assign_another_invalid_value(self):
         with self.assertRaises(errors.ValidationError):
-            self.req['test'] = {}
+            self.op['pattern'] = {}
+
+        with self.assertRaises(errors.ValidationError):
+            self.op['int'] = 'not an int'
 
     def test_serializing_with_invalid_data(self):
-        self.req._data['test'] = 'wrong value again'
+        self.op._request_data['pattern'] = 'wrong value again'
+        self.op._request_data['int'] = {}
+
         with self.assertRaises(errors.ValidationError):
-            self.req.as_serializable_dict()
+            self.op.get_serializable_request()
 
     def test_assing_valid_value(self):
-        # Should not raise
-        self.req['test'] = 'has to match this'
+        self.op['pattern'] = 'has to match this'
+        self.op['int'] = 42
 
-    def test_serialize(self):
-        self.req.as_serializable_dict()
+        self.op.get_serializable_request()
 
-class TestResponse(unittest.TestCase):
-    def setUp(self):
-        self.res = protocol.Response()
-
-        # This basically allows all data, provided the root object is a dict
-        self.res._bundle = schemata.SchemaBundle('allow-any', {
-                'schema': {'type': 'object'},
-                'mapping': {
-                    'from': 'to',
-                    'from_nested': ['to_nested', {
-                        '1': 'a',
-                        '2': 'b'
-                    }]
-                }
-            }
-        )
-
-    def test_mapping(self):
-        self.res.load(None, {
+    def test_response_mapping(self):
+        self.op.load_response({
             'from': 'from value',
             'from_nested': {
                 '1': 'first value',
@@ -69,10 +44,12 @@ class TestResponse(unittest.TestCase):
             }
         })
 
-        self.assertEqual(self.res['to'], 'from value')
-        self.assertTrue(isinstance(self.res['to_nested'], dict))
-        self.assertEqual(self.res['to_nested']['a'], 'first value')
-        self.assertEqual(self.res['to_nested']['b'], 'second value')
+        res = self.op.response()
+
+        self.assertEqual(res['to'], 'from value')
+        self.assertTrue(isinstance(res['to_nested'], dict))
+        self.assertEqual(res['to_nested']['a'], 'first value')
+        self.assertEqual(res['to_nested']['b'], 'second value')
 
 if __name__ == '__main__':
     unittest.main()
