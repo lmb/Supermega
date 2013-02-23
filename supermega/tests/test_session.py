@@ -4,7 +4,7 @@ import os
 import random
 from StringIO import StringIO
 
-from .. import Session, User, File
+from .. import Session, User, File, Directory
 from .. import errors
 
 USERNAME = os.environ.get('MEGA_USERNAME', None)
@@ -76,3 +76,19 @@ class TestFile(unittest.TestCase):
 			name=self.random_filename, size=length)
 
 		uploaded_file.download(verify_hash, self, sha256)
+
+class TestDirectory(unittest.TestCase):
+	def setUp(self):
+		self.sess = Session(USERNAME, PASSWORD)
+
+	@requires_account
+	def test_create(self):
+		root = self.sess.root
+		d = None
+
+		try:
+			random_dir = random_string(5)
+			d = Directory.create(random_dir, root)
+		finally:
+			if d:
+				d.delete()
