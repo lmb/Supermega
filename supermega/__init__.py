@@ -94,7 +94,7 @@ class Session(object):
         self._load_filetree()
         return self._inbox
 
-    def get_by_handle(self, handle):
+    def get_node(self, handle):
         return self._datastore[handle]
 
     def find(self, name, strict=False, type=None):
@@ -160,10 +160,7 @@ class Session(object):
             self._add_to_tree(meta)
 
     def _add_to_tree(self, meta):
-        if hasattr(meta, 'parent') and meta.parent:
-            parent = self._datastore[meta.parent]
-            parent.children.add(meta)
-        elif hasattr(meta, 'type'):
+        if hasattr(meta, 'type'):
             if meta.type == Meta.TYPE_ROOT:
                 self._root = meta
             elif meta.type == Meta.TYPE_INBOX:
@@ -431,11 +428,7 @@ class Container(Meta):
 
     def __getitem__(self, name):
         """Retrieve a contained item by its name."""
-        for obj in self.children:
-            if obj.name == name:
-                return obj
-
-        raise KeyError('{} is not a child of this container'.format(repr(name)))
+        return self.get_child(name)
 
     def __iter__(self):
         return iter(self.children)
@@ -445,6 +438,26 @@ class Container(Meta):
             self.handle)
 
     __repr__ = __str__
+
+    def get_child(self, name):
+        """Get a child by its name."""
+        for obj in self.children:
+            if obj.name == name:
+                return obj
+
+        raise KeyError('{} is not a child of this container'.format(name))
+
+    def add_child(self, child):
+        """Add a new child to container, removing it from its current parent."""
+        if hasattr(child, 'parent'):
+            child.parent.remove_child(child)
+
+        child.parent = self
+        self.children.add(child)
+
+    def remove_child(self, child):
+        """Remove a child from container."""
+        self.children.remove(child)
 
     @property
     def subdirs(self):
@@ -486,7 +499,6 @@ class Container(Meta):
         for f in self.files:
             print '{}    {}'.format(prefix, repr(f))
 
-
     @staticmethod
     def is_container(obj):
         return isinstance(obj, Container)
@@ -499,8 +511,12 @@ class Containee(object):
     def _deserialize(self, data, kwargs):
         super(Containee, self)._deserialize(data, kwargs)
 
-        # TODO: Refactor and make this required
-        self.parent = data.get('parent', None)
+        parent = data.get('parent', None)
+        if parent:
+            # Files created from a Public URL are Containees but do not have a
+            # parent
+            parent = self._session.get_node(data['parent'])
+            parent.add_child(self)
 
         session = self._session
         cipher_info = kwargs.get('cipher_info', None)
@@ -517,7 +533,7 @@ class Containee(object):
             cipher = AES.new(intermediate_key, mode=AES.MODE_ECB)
             cipher_info = utils.decrypt(cipher, b64decode(self.keys[key_id]))
 
-        self._extract_cipher_spec(cipher_info)
+        self.unpack_key(cipher_info)
         assert(self.key is not None)
 
         ## Decrypt attributes (name as of now)
@@ -532,15 +548,50 @@ class Containee(object):
             attrs = json.loads(attrs[4:])
             self.name = attrs['n']
 
-    def get_encrypted_attrs(self):
+    def rename(self, new_name):
+        old_name = self.name
+        try:
+            self.name = new_name
+
+            protocol.NodeUpdate(
+                self.handle,
+                self.get_serialized_key(),
+                self.get_serialized_attrs()
+            ).response(self._session)
+        except:
+            # TODO: Should this catch only ServiceError?
+            self.name = old_name
+            raise
+
+    def move_to(self, new_parent):
+        if not isinstance(new_parent, Container):
+            raise TypeError('The new parent has to be a container')
+
+        protocol.FileMove(self, new_parent).response(self._session)
+        new_parent.add_child(self)
+
+    def get_serialized_attrs(self):
+        """Serializes the objects attributes into an encrypted base64 string."""
         attrs = 'MEGA' + json.dumps({'n': self.name})
         cipher = AES.new(self.key, mode=AES.MODE_CBC, IV='\0'*AES.block_size)
         return b64encode(utils.encrypt(cipher, attrs))
 
     def get_serialized_key(self):
+        """Serializes the key into an encrypted base64 encoded string."""
+        cipher = AES.new(self._session.user.master_key, mode=AES.MODE_ECB)
+        ciphertext = utils.encrypt(cipher, self.pack_key())
+        return b64encode(ciphertext)
+
+    def get_unencrypted_serialized_key(self):
+        """Serializes the unencrypted key into a base64 encoded string."""
+        return b64encode(self.pack_key())
+
+    def pack_key(self):
+        """Packs the key material into the format expected by MEGA."""
         raise NotImplementedError
 
-    def _extract_cipher_spec(self, cipher_info):
+    def unpack_key(self, cipher_info):
+        """Unpacks a key from the MEGA format."""
         raise NotImplementedError
 
     def __str__(self):
@@ -551,14 +602,34 @@ class Containee(object):
 
 @meta_data_for(Meta.TYPE_DIRECTORY)
 class Directory(Containee, Container):
+    KEY_LENGTH_BITS = 128
+
     @classmethod
     def create(cls, name, parent):
-        pass
+        new_dir = cls(parent._session)
+        new_dir.key = long_to_bytes(random.getrandbits(cls.KEY_LENGTH_BITS))
+        new_dir.name = name
 
-    def get_serialized_key(self):
+        res = protocol.NodeAdd(
+            parent.handle,
+            Meta.TYPE_DIRECTORY,
+            new_dir.get_serialized_key(),
+            new_dir.get_serialized_attrs(),
+            'xxxxxxxx' # This is what the official client sends
+        ).response(parent._session)
+
+        assert(len(res['nodes']) == 1)
+
+        for data in res['nodes']:
+            # TODO Make this work for multiple files?
+            new_dir = Meta.for_data(data, parent._session)
+            parent._session._add_to_tree(new_dir)
+            return new_dir
+
+    def pack_key(self):
         return self.key
 
-    def _extract_cipher_spec(self, cipher_info):
+    def unpack_key(self, cipher_info):
         assert(len(cipher_info) == 16)
         self.key = cipher_info
 
@@ -644,13 +715,17 @@ class File(Containee, Meta):
             new_file.mac = file_mac.digest()
             new_file.key = key
 
-            res = protocol.FileAdd(
-                parent.handle, new_file, completion_token
+            res = protocol.NodeAdd(
+                parent.handle,
+                new_file.type,
+                new_file.get_serialized_key(),
+                new_file.get_serialized_attrs(),
+                completion_token
             ).response(parent._session)
 
-            assert(len(res['files']) == 1)
+            assert(len(res['nodes']) == 1)
 
-            for data in res['files']:
+            for data in res['nodes']:
                 # TODO Make this work for multiple files?
                 f = Meta.for_data(data, parent._session)
                 parent._session._add_to_tree(f)
@@ -670,18 +745,19 @@ class File(Containee, Meta):
     def download(self, func, *args, **kwargs):
         func(self, self.chunks(), *args, **kwargs)
 
-    def move_to(self, new_parent):
-        if not isinstance(new_parent, Container):
-            raise TypeError('The new parent has to be a container')
-
-        res = protocol.FileMove(self, new_parent).response(self._session)
-        assert(res['errno'] == 0)
-
     def delete(self):
         res = protocol.FileDelete(self.handle).response(self._session)
         assert(res['errno'] == 0)
 
-    def _extract_cipher_spec(self, cipher_info):
+    def pack_key(self):
+        """Packs the key into the MEGA format.
+
+        The format is as follows:
+        <128bit key XOR iv + mac><64bit iv><64bit mac>."""
+        key = strxor(self.key, self.iv + self.mac)
+        return key + self.iv + self.mac
+
+    def unpack_key(self, cipher_info):
         # 128bit key XORed with trailing 128bit,
         # followed by upper 64bit of CTR mode IV,
         # again followed by 64bit MAC
@@ -719,28 +795,12 @@ class File(Containee, Meta):
             raise errors.CorruptFile(
                 "Corrupt download: invalid hash")
 
-    def get_serialized_binary_key(self):
-        """Serializes the key into a binary (base 256) string."""
-        key = strxor(self.key, self.iv + self.mac)
-        return key + self.iv + self.mac
-
-    def get_serialized_key(self):
-        """Serializes the key into a base64 encoded string."""
-        cipher = AES.new(self._session.user.master_key, mode=AES.MODE_ECB)
-        ciphertext = utils.encrypt(cipher, self.get_serialized_binary_key())
-        return b64encode(ciphertext)
-
-    def get_serialized_key_unencrypted(self):
-        """Serializes the unencrypted key into a base64 encoded string."""
-        return b64encode(self.get_serialized_binary_key())
-
     def get_public_url(self, include_key = True):
         res = protocol.FileGetPublicHandle(self.handle).response(self._session)
 
         handle = [res['public_handle']]
         if include_key:
-            handle
-            ppend(self.get_serialized_key_unencrypted())
+            handle.append(self.get_unencrypted_serialized_key())
 
         return File.PUBLIC_BASE_URL + '!'.join(handle)
 

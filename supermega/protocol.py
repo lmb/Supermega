@@ -254,17 +254,27 @@ class FileUpload(Operation):
     def request(self, size):
         self['size'] = size
 
-class FileAdd(Operation):
-    schema = 'file-add.bundle.json'
+class NodeAdd(Operation):
+    schema = 'node-add.bundle.json'
 
-    def request(self, parent_handle, new_file, completion_token):
+    def request(self, parent_handle, node_type, node_key, node_attrs,
+        completion_token):
         self['parent'] = parent_handle
-        self['files'] = [{
+        self['nodes'] = [{
             'completion_token': completion_token,
-            'type': new_file.type,
-            'attrs': new_file.get_encrypted_attrs(),
-            'key': new_file.get_serialized_key()
+            'type': node_type,
+            'attrs': node_attrs,
+            'key': node_key
         }]
+
+class NodeUpdate(Operation):
+    schema = 'node-update.bundle.json'
+
+    def request(self, node_handle, key, attrs):
+        self['handle'] = node_handle
+        self['key'] = key
+        self['attrs'] = attrs
+        self['request_id'] = ''
 
 class FileMove(Operation):
     schema = 'file-move.bundle.json'

@@ -1,0 +1,30 @@
+{
+    "request": {
+        "opcode": "a",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "n": {"type": "string", "required": true},
+                "attr": {"type": "string", "required": true},
+                "key": {"type": "string", "required": true},
+                "i": {"type": "string", "required": true}
+            }
+        },
+
+        "mapping": {
+            "handle": "n",
+            "request_id": "i",
+            "attrs": "attr",
+            "key": "key"
+        }
+    },
+    "response": {
+        "schema": {
+            "type": "integer",
+            "required": true
+        },
+        "mapping": {
+            "*": "errno"
+        }
+    }
+}

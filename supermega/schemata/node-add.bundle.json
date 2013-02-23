@@ -23,7 +23,7 @@
 
         "mapping": {
             "parent": "t",
-            "files": ["n", {
+            "nodes": ["n", {
                 "completion_token": "h",
                 "type": "t",
                 "attrs": "a",
@@ -36,18 +36,13 @@
             "type": "object",
             "properties": {
                 "f": {
-                    "extends": {"$ref": "files.bundle.json#response/schema/properties/f"},
-                    "items": {
-                        "properties": {
-                            "s": {"required": true}
-                        }
-                    }
+                    "extends": {"$ref": "files.bundle.json#response/schema/properties/f"}
                 }
             }
         },
 
         "mapping": {
-            "f": ["files", {
+            "f": ["nodes", {
                 "h": "handle",
                 "ts": "timestamp",
                 "u": "owner",
