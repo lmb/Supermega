@@ -130,6 +130,9 @@ class Operation(object):
         if not self._response_data:
             Transaction(self).send(session)
 
+        if isinstance(self._response_data, errors.ServiceError):
+            raise self._response_data
+
         return copy.deepcopy(self._response_data)
 
     def get_serializable_request(self):
@@ -142,6 +145,9 @@ class Operation(object):
     def load_response(self, data):
         self._response.schema.validate(data)
         self._response_data = self._response.translate(data)
+
+    def set_response_error(self, error):
+        self._response_data = error
 
     def get(self, *args, **kwargs): # ???
         return self._request_data.get(*args, **kwargs)
@@ -176,14 +182,16 @@ class Transaction(list):
         # The server seems to return either -errno or [-errno]
         if isinstance(data, (int, long)):
             raise errors.ServiceError.for_errno(data)
-        if len(data) == 1 and isinstance(data[0], (int, long)) and data[0] < 0:
-            # TODO: This only catches the first error in a complete transaction
-            raise errors.ServiceError.for_errno(data[0])
 
         TRANSACTION_SCHEMA.validate(data)
 
         for op, response_data in itertools.izip(request_transaction, data):
-            op.load_response(response_data)
+            if isinstance(response_data, (int, long)) and response_data < 0:
+                op.set_response_error(
+                    errors.ServiceError.for_errno(response_data))
+            else:
+                op.load_response(response_data)
+
             self.append(op)
 
     def send(self, session):
