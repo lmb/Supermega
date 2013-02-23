@@ -97,6 +97,9 @@ class Session(object):
     def get_node(self, handle):
         return self._datastore[handle]
 
+    def remove_node(self, node):
+        del self._datastore[node.handle]
+
     def find(self, name, strict=False, type=None):
         """Search for a file or directory."""
         results = []
@@ -468,9 +471,10 @@ class Container(Meta):
         return itertools.ifilterfalse(self.is_container, self.children)
 
     def walk(self):
-        yield (self, self.subdirs, self.files)
+        subdirs = list(self.subdirs)
+        yield (self, subdirs, self.files)
 
-        for subdir in self.subdirs:
+        for subdir in subdirs:
             for result in subdir.walk():
                 yield result
 
@@ -570,6 +574,11 @@ class Containee(object):
         protocol.FileMove(self, new_parent).response(self._session)
         new_parent.add_child(self)
 
+    def delete(self):
+        res = protocol.FileDelete(self.handle).response(self._session)
+        self.parent.remove_child(self)
+        self._session.remove_node(self)
+
     def get_serialized_attrs(self):
         """Serializes the objects attributes into an encrypted base64 string."""
         attrs = 'MEGA' + json.dumps({'n': self.name})
@@ -625,6 +634,14 @@ class Directory(Containee, Container):
             new_dir = Meta.for_data(data, parent._session)
             parent._session._add_to_tree(new_dir)
             return new_dir
+
+    def delete(self):
+        super(Directory, self).delete()
+
+        for _, subdirs, files in self.children:
+            map(self._session.remove_node, subdirs, files)
+
+        self.children = None
 
     def pack_key(self):
         return self.key
@@ -744,10 +761,6 @@ class File(Containee, Meta):
 
     def download(self, func, *args, **kwargs):
         func(self, self.chunks(), *args, **kwargs)
-
-    def delete(self):
-        res = protocol.FileDelete(self.handle).response(self._session)
-        assert(res['errno'] == 0)
 
     def pack_key(self):
         """Packs the key into the MEGA format.
