@@ -1,9 +1,9 @@
 {
     "request": {
+        "opcode": "u",
         "schema": {
             "type": "object",
             "properties": {
-                "a": {"type": "string", "pattern": "u", "required": true},
                 "ms": {"type": "integer"},
                 "s": {"type": "integer", "required": true},
                 "r": {"type": "integer"},

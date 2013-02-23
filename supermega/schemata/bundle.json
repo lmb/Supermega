@@ -7,23 +7,8 @@
         "request": {
             "extends": { "$ref": "operation.json" },
             "properties": {
-                "schema": {
-                    "properties": {
-                        "properties": {
-                            "type": "object",
-                            "required": true,
-                            "properties": {
-                                "a": {
-                                    "type": "object",
-                                    "required": true,
-                                    "properties": {
-                                        "type": { "required": true, "pattern": "string" },
-                                        "pattern": { "required": true, "type": "string" }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                "opcode": {
+                    "required": true
                 }
             }
         }

@@ -1,32 +1,33 @@
 {
-"request": {
-    "schema": {
-        "type": "object",
-        "properties": {
-            "a": {"type": "string", "pattern": "us", "required": true},
-            "user": {"type": "string", "pattern": "[^@]+@\\w+\\.\\w{2,}", "required": true},
-            "uh": {"type": "string", "minLength": 8, "maxLength": 12, "required": true, "pattern": "[\\w-]+"}
+    "request": {
+        "opcode": "us",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "user": {"type": "string", "pattern": "[^@]+@\\w+\\.\\w{2,}", "required": true},
+                "uh": {"type": "string", "minLength": 8, "maxLength": 12, "required": true, "pattern": "[\\w-]+"}
+            }
+        },
+
+        "mapping": {
+            "user": "user",
+            "hash": "uh"
         }
     },
+    "response": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "csid": {"type": "string", "required": true},
+                "privk": {"type": "string", "required": true},
+                "k": {"type": "string", "required": true}
+            }
+        },
 
-    "mapping": {
-        "user": "user",
-        "hash": "uh"
-    }
-},
-"response": {
-    "schema": {
-        "type": "object",
-        "properties": {
-            "csid": {"type": "string", "required": true},
-            "privk": {"type": "string", "required": true},
-            "k": {"type": "string", "required": true}
+        "mapping": {
+            "csid": "session_id",
+            "privk": "private_key",
+            "k": "master_key"
         }
-    },
-
-    "mapping": {
-        "csid": "session_id",
-        "privk": "private_key",
-        "k": "master_key"
     }
-}}
+}

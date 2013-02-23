@@ -2,6 +2,9 @@
 	"type": "object",
     "required": true,
     "properties": {
+        "opcode": {
+            "type": "string"
+        },
         "schema": {
             "type": "object",
             "required": true

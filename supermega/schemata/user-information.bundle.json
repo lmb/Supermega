@@ -1,31 +1,31 @@
 {
-"request": {
-    "schema": {
-        "type": "object",
-        "properties": {
-            "a": {"type": "string", "pattern": "ug", "required": true}
+    "request": {
+        "opcode": "ug",
+        "schema": {
+            "type": "object",
+            "properties": {}
+        },
+
+        "mapping": {
         }
     },
+    "response": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "u": {"type": "string", "required": true},
+                "s": {"type": "integer", "required": true},
+                "k": {"type": "string", "required": true},
+                "c": {"type": "integer", "required": true},
+                "pubk": {"type": "string", "required": true},
+                "privk": {"type": "string", "required": true},
+                "ts": {"type": "string", "required": true}
+            }
+        },
 
-    "mapping": {
-    }
-},
-"response": {
-    "schema": {
-        "type": "object",
-        "properties": {
-            "u": {"type": "string", "required": true},
-            "s": {"type": "integer", "required": true},
-            "k": {"type": "string", "required": true},
-            "c": {"type": "integer", "required": true},
-            "pubk": {"type": "string", "required": true},
-            "privk": {"type": "string", "required": true},
-            "ts": {"type": "string", "required": true}
+        "mapping": {
+            "pubk": "public_key",
+            "u": "userhandle"
         }
-    },
-
-    "mapping": {
-        "pubk": "public_key",
-        "u": "userhandle"
     }
-}}
+}

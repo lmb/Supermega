@@ -1,9 +1,9 @@
 {
 "request": {
+    "opcode": "g",
     "schema": {
         "type": "object",
         "properties": {
-            "a": {"type": "string", "pattern": "g", "required": true},
             "g": {"type": "integer", "required": true},
             "n": {"type": "string", "required": true}
         }

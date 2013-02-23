@@ -1,9 +1,9 @@
 {
     "request": {
+        "opcode": "up",
         "schema": {
             "type": "object",
                 "properties": {
-                    "a": {"type": "string", "pattern": "up", "required": true},
                     "k": {"type": "string", "required": true},
                     "ts": {"type": "string", "required": true}
                 }

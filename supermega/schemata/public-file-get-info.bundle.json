@@ -1,32 +1,33 @@
 {
-"request": {
-    "schema": {
-        "type": "object",
-        "properties": {
-            "a": {"type": "string", "pattern": "g", "required": true},
-            "g": {"type": "integer", "required": true},
-            "p": {"type": "string", "required": true}
+    "request": {
+        "opcode": "g",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "g": {"type": "integer", "required": true},
+                "p": {"type": "string", "required": true}
+            }
+        },
+
+        "mapping": {
+            "include_url": "g",
+            "handle": "p"
         }
     },
+    "response": {
+        "schema": {
+            "type": "object",
+            "properties": {
+                "g": {"type": "string", "required": false},
+                "s": {"type": "integer", "required": true},
+                "at": {"type": "string", "required": true}
+            }
+        },
 
-    "mapping": {
-        "include_url": "g",
-        "handle": "p"
-    }
-},
-"response": {
-    "schema": {
-        "type": "object",
-        "properties": {
-            "g": {"type": "string", "required": false},
-            "s": {"type": "integer", "required": true},
-            "at": {"type": "string", "required": true}
+        "mapping": {
+            "g": "url",
+            "s": "size",
+            "at": "attrs"
         }
-    },
-
-    "mapping": {
-        "g": "url",
-        "s": "size",
-        "at": "attrs"
     }
-}}
+}

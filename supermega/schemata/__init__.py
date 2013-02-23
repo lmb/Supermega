@@ -55,6 +55,7 @@ class Schema(object):
                 return json.load(f)
 
 class SchemaBundle(object):
+    OPCODE_KEY = 'a'
     OPERATION_SCHEMA = Schema.from_file('operation.json')
     BUNDLE_SCHEMA = Schema.from_file('bundle.json')
 
@@ -66,7 +67,13 @@ class SchemaBundle(object):
         if isinstance(self.mapping, basestring):
             self.mapping = {self.mapping: None}
 
-        self.schema = Schema(name, operation['schema'])
+        self.opcode = operation.get('opcode', None)
+        schema = operation['schema']
+        if self.opcode:
+            schema['properties'][self.OPCODE_KEY] = {
+                'type': 'string', 'required': True, 'pattern': self.opcode}
+
+        self.schema = Schema(name, schema)
 
     @classmethod
     def from_file(cls, bundle_file, part):

@@ -1,9 +1,9 @@
 {
     "request": {
+        "opcode": "us",
         "schema": {
             "type": "object",
             "properties": {
-                "a": {"type": "string", "pattern": "us", "required": true},
                 "user": {"type": "string", "required": true}
             }
         },

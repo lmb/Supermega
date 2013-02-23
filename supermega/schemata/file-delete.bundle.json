@@ -1,9 +1,9 @@
 {
     "request": {
+        "opcode": "d",
         "schema": {
             "type": "object",
             "properties": {
-                "a": {"type": "string", "pattern": "d", "required": true},
                 "n": {"type": "string", "required": true},
                 "i": {"type": "string", "required": true}
             }
@@ -19,7 +19,6 @@
             "type": "integer",
             "required": true
         },
-
         "mapping": {
             "*": "errno"
         }
